@@ -106,35 +106,9 @@ function @main(args)
 
     # Load the module
     try
-        # Try to load the module
+        # Load the module using Base.require
         mod_symbol = Symbol(module_name)
-        
-        # Try to load the module using Base.require
-        mod = try
-            # First try to load it as a package in the current environment
-            Base.require(Main, mod_symbol)
-        catch
-            # If that fails, check if it's already loaded
-            if isdefined(Main, mod_symbol)
-                getfield(Main, mod_symbol)
-            else
-                # Try to include it as a local file
-                loaded = false
-                for path in ["$module_name.jl", "src/$module_name.jl", "../$module_name.jl"]
-                    if isfile(path)
-                        include(abspath(path))
-                        loaded = true
-                        break
-                    end
-                end
-                
-                if loaded && isdefined(Main, mod_symbol)
-                    getfield(Main, mod_symbol)
-                else
-                    error("Could not load module: $module_name")
-                end
-            end
-        end
+        mod = Base.require(Main, mod_symbol)
 
         # Extract functions
         setup_fn = nothing
