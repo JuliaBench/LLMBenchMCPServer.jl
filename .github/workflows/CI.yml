@@ -33,16 +33,17 @@ jobs:
       - uses: julia-actions/cache@v2
       - name: Setup SSH for private repos
         run: |
+          # Add GitHub to known hosts
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo "Host github.com" >> ~/.ssh/config
-          echo "  HostName github.com" >> ~/.ssh/config
-          echo "  User git" >> ~/.ssh/config
-          echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
-          echo "  IdentitiesOnly yes" >> ~/.ssh/config
-          chmod 600 ~/.ssh/config
+          
+          # Start ssh-agent and export variables for subsequent steps
+          eval "$(ssh-agent -s)"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
+          
+          # Add the deploy key to ssh-agent
+          echo "${{ secrets.DEPLOY_KEY }}" | ssh-add -
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
