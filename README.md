@@ -56,10 +56,10 @@ run_stdio_server(server)
 #### Command Line Usage
 
 ```bash
-# Using the provided script
-./bin/llmbench MyBenchmarkModule [options]
+# Using the -m flag (recommended)
+julia --project -m LLMBenchMCPServer MyBenchmarkModule [options]
 
-# Or directly with Julia
+# Or using -e flag
 julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- MyBenchmarkModule [options]
 ```
 
