@@ -2,11 +2,11 @@
 
 julia_version = "1.13.0-DEV"
 manifest_format = "2.0"
-project_hash = "b80e681f4ebf05f6eba3c868de5fc47aa2cc335c"
+project_hash = "69b4d7cbdacd0be0af9965d9032956923b35b619"
 
 [[deps.ClaudeMCPTools]]
-deps = ["JSON"]
-git-tree-sha1 = "9b896351226ba85681ccc8769549eab32812337e"
+deps = ["JSON", "Sockets"]
+git-tree-sha1 = "9081fe72fb82c35e8a7aa59d346293b9367218a9"
 repo-rev = "master"
 repo-url = "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"
 uuid = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
@@ -24,7 +24,7 @@ uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.21.4"
 
 [[deps.LLMBenchMCPServer]]
-deps = ["ClaudeMCPTools", "JSON", "LLMBenchSimple"]
+deps = ["ClaudeMCPTools", "Dates", "JSON", "LLMBenchSimple"]
 path = "."
 uuid = "78754875-2f68-464a-ac60-858ac662827f"
 version = "0.1.0"
@@ -71,6 +71,10 @@ version = "1.11.0"
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 version = "0.7.0"
+
+[[deps.Sockets]]
+uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
+version = "1.11.0"
 
 [[deps.TOML]]
 deps = ["Dates"]

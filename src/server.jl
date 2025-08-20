@@ -59,7 +59,7 @@ function @main(args)
 
         Options:
             --workdir PATH      Working directory (default: current directory)
-            --socket PATH       Run server on Unix domain socket instead of stdio
+            --socket            Run server on Unix domain socket (creates socket in /tmp)
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
             --help, -h          Show this help message
@@ -73,7 +73,7 @@ function @main(args)
 
         Examples:
             julia --project -m LLMBenchMCPServer MyBenchmark
-            julia --project -m LLMBenchMCPServer MyBenchmark --socket /tmp/mcp.sock
+            julia --project -m LLMBenchMCPServer MyBenchmark --socket
         """)
         return 0
     end
@@ -81,7 +81,7 @@ function @main(args)
     # Parse arguments
     module_name = args[1]
     working_dir = pwd()
-    socket_path = nothing
+    use_socket = false
     include_basic_tools = true
     verbose = false
 
@@ -90,9 +90,9 @@ function @main(args)
         if args[i] == "--workdir" && i + 1 <= length(args)
             working_dir = args[i + 1]
             i += 2
-        elseif args[i] == "--socket" && i + 1 <= length(args)
-            socket_path = args[i + 1]
-            i += 2
+        elseif args[i] == "--socket"
+            use_socket = true
+            i += 1
         elseif args[i] == "--no-basic-tools"
             include_basic_tools = false
             i += 1
@@ -152,14 +152,29 @@ function @main(args)
             println("Starting MCP server for $module_name")
             println("Working directory: $working_dir")
             println("Tools registered: $(keys(server.tools))")
-            if socket_path !== nothing
-                println("Socket path: $socket_path")
-            end
         end
 
         # Run the server in appropriate mode
-        if socket_path !== nothing
-            ClaudeMCPTools.run_unix_socket_server(server, socket_path, verbose=verbose)
+        if use_socket
+            # Generate a unique socket path in /tmp
+            timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
+            pid = getpid()
+            socket_path = "/tmp/mcp_$(module_name)_$(timestamp)_$(pid).sock"
+            
+            println("Socket path: $socket_path")
+            
+            # Run server and ensure cleanup on exit
+            try
+                ClaudeMCPTools.run_unix_socket_server(server, socket_path, verbose=verbose, cleanup=true)
+            finally
+                # Ensure socket is cleaned up even on error
+                if isfile(socket_path)
+                    rm(socket_path)
+                    if verbose
+                        println("Cleaned up socket: $socket_path")
+                    end
+                end
+            end
         else
             ClaudeMCPTools.run_stdio_server(server, verbose=verbose)
         end
@@ -172,8 +187,6 @@ function @main(args)
     return 0
 end
 
-# Compatibility function for direct module usage
-function main(args=ARGS)
-    # Delegate to @main function
-    (@main)(args)
-end
+# Export a regular main function for programmatic use
+const main = @main
+export main

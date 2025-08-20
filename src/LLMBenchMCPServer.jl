@@ -2,6 +2,7 @@ module LLMBenchMCPServer
 
 using ClaudeMCPTools
 using JSON
+using Dates
 
 export LLMBenchServer, SetupProblemTool, GradeProblemTool
 export main

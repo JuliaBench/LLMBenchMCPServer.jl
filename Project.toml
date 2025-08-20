@@ -5,6 +5,7 @@ authors = ["JuliaComputing"]
 
 [deps]
 ClaudeMCPTools = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 LLMBenchSimple = "a7b3c4d5-e6f7-8901-2345-678901234567"
 

@@ -65,7 +65,7 @@ julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- MyBenc
 
 Options:
 - `--workdir PATH`: Set the working directory (default: current directory)
-- `--socket PATH`: Run server on Unix domain socket instead of stdio
+- `--socket`: Run server on Unix domain socket (creates unique socket in /tmp)
 - `--no-basic-tools`: Disable basic tools (bash, str_replace_editor)
 - `--verbose`: Enable verbose output
 - `--help, -h`: Show help message
@@ -75,11 +75,18 @@ Options:
 Run the server on a Unix socket for integration with other tools:
 
 ```bash
-# Start server on Unix socket
-julia --project -m LLMBenchMCPServer MyBenchmark --socket /tmp/mcp.sock
+# Start server on Unix socket (automatically creates unique socket in /tmp)
+julia --project -m LLMBenchMCPServer MyBenchmark --socket
 
-# The server will listen on the socket for MCP protocol connections
-# Multiple clients can connect simultaneously
+# Output will show the socket path:
+# Socket path: /tmp/mcp_MyBenchmark_20240820_143022_12345.sock
+
+# The server will:
+# - Create a unique socket file in /tmp with timestamp and PID
+# - Print the socket path for clients to connect to
+# - Listen for MCP protocol connections
+# - Support multiple concurrent client connections
+# - Automatically clean up the socket file on exit
 ```
 
 #### Programmatic Usage
