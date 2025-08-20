@@ -40,25 +40,19 @@ function LLMBenchServer(;
     return server
 end
 
-"""
-    main(args=ARGS)
-
-Main entry point for the LLMBenchMCPServer.
-
-Usage:
-    julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- ModuleName [--workdir /path]
-
-The module should export:
-- `setup_problem(workdir::String)` - Returns problem description
-- `grade(workdir::String, transcript::String)` - Returns grading result
-"""
+# Main entry point for the LLMBenchMCPServer.
+# Usage: julia --project -m LLMBenchMCPServer ModuleName [--workdir /path]
 function main(args=ARGS)
-    if isempty(args) || args[1] in ["--help", "-h"]
+    # Handle both array and varargs inputs
+    if isa(args, Tuple)
+        args = collect(args)
+    end
+    if isempty(args) || (length(args) == 1 && args[1] in ["--help", "-h"])
         println("""
         LLMBenchMCPServer - MCP server for LLM benchmarking
         
         Usage:
-            julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- ModuleName [options]
+            julia --project -m LLMBenchMCPServer ModuleName [options]
         
         Arguments:
             ModuleName          Name of the module containing setup_problem and grade functions
@@ -77,7 +71,7 @@ function main(args=ARGS)
                 Returns grading result with subscores, weights, and total score
         
         Example:
-            julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- MyBenchmark
+            julia --project -m LLMBenchMCPServer MyBenchmark
         """)
         return 0
     end

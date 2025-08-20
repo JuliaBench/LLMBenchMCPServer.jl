@@ -1,5 +1,8 @@
 # LLMBenchMCPServer.jl
 
+[![CI](https://github.com/JuliaComputing/LLMBenchMCPServer.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaComputing/LLMBenchMCPServer.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/JuliaComputing/LLMBenchMCPServer.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaComputing/LLMBenchMCPServer.jl)
+
 A Julia package that implements the full taiga spec as an MCP (Model Context Protocol) server for LLM benchmarking.
 
 ## Features
@@ -50,13 +53,44 @@ run_stdio_server(server)
 
 ### Module-Based Execution
 
+#### Command Line Usage
+
+```bash
+# Using the provided script
+./bin/llmbench MyBenchmarkModule [options]
+
+# Or directly with Julia
+julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- MyBenchmarkModule [options]
+```
+
+Options:
+- `--workdir PATH`: Set the working directory (default: current directory)
+- `--no-basic-tools`: Disable basic tools (bash, str_replace_editor)
+- `--verbose`: Enable verbose output
+- `--help, -h`: Show help message
+
+#### Programmatic Usage
+
 ```julia
 # Run with a benchmark module
 # The module must export setup_problem and grade functions
-LLMBenchMCPServer.main("MyBenchmarkModule")
+LLMBenchMCPServer.main(["MyBenchmarkModule", "--verbose"])
 ```
 
 ### Creating a Benchmark Module
+
+#### Option 1: Using LLMBenchSimple
+
+```julia
+module MyBenchmark
+    using LLMBenchSimple
+    
+    @bench "addition" prompt"What is 2 + 2?" == 4
+    @bench "capital" prompt"What is the capital of France?" == "Paris"
+end
+```
+
+#### Option 2: Custom Implementation
 
 ```julia
 module MyBenchmark

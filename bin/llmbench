@@ -1,0 +1,7 @@
+#!/usr/bin/env -S julia --project
+
+# Entry point script for LLMBenchMCPServer
+using LLMBenchMCPServer
+
+# Pass command line arguments to main
+LLMBenchMCPServer.main(ARGS)
