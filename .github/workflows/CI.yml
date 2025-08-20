@@ -22,7 +22,6 @@ jobs:
         os:
           - ubuntu-latest
           - macOS-latest
-          - windows-latest
         arch:
           - x64
     steps:
@@ -32,8 +31,8 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
-      - name: Setup SSH for private repos (Unix)
-        if: ${{ secrets.DEPLOY_KEY != '' && runner.os != 'Windows' }}
+      - name: Setup SSH for private repos
+        if: ${{ secrets.DEPLOY_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
@@ -45,21 +44,6 @@ jobs:
           echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
           echo "  IdentitiesOnly yes" >> ~/.ssh/config
           chmod 600 ~/.ssh/config
-      - name: Setup SSH for private repos (Windows)
-        if: ${{ secrets.DEPLOY_KEY != '' && runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $sshDir = "$env:USERPROFILE\.ssh"
-          if (!(Test-Path $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force }
-          $env:DEPLOY_KEY | Out-File -FilePath "$sshDir\deploy_key" -Encoding ascii
-          ssh-keyscan github.com | Out-File -FilePath "$sshDir\known_hosts" -Encoding ascii -Append
-          @"
-          Host github.com
-            HostName github.com
-            User git
-            IdentityFile $sshDir\deploy_key
-            IdentitiesOnly yes
-          "@ | Out-File -FilePath "$sshDir\config" -Encoding ascii
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
