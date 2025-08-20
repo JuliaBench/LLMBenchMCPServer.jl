@@ -36,12 +36,32 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           
-          # Write deploy key to file
-          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          # Write deploy keys to files
+          echo "${{ secrets.CLAUDE_MCP_TOOLS_DEPLOY_KEY }}" > ~/.ssh/claude_mcp_tools_key
+          chmod 600 ~/.ssh/claude_mcp_tools_key
           
-          # Configure git to use the deploy key
-          git config --global core.sshCommand "ssh -i ~/.ssh/deploy_key"
+          echo "${{ secrets.LLMBENCH_SIMPLE_DEPLOY_KEY }}" > ~/.ssh/llmbench_simple_key
+          chmod 600 ~/.ssh/llmbench_simple_key
+          
+          # Configure SSH to use different keys for different repos
+          cat >> ~/.ssh/config << 'EOF'
+          Host github-claudemcp
+              HostName github.com
+              User git
+              IdentityFile ~/.ssh/claude_mcp_tools_key
+              IdentitiesOnly yes
+          
+          Host github-llmbench
+              HostName github.com
+              User git
+              IdentityFile ~/.ssh/llmbench_simple_key
+              IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+          
+          # Configure git to use the appropriate hosts
+          git config --global url."git@github-claudemcp:JuliaComputing/ClaudeMCPTools.jl.git".insteadOf "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"
+          git config --global url."git@github-llmbench:JuliaComputing/LLMBenchSimple.jl.git".insteadOf "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
       - uses: julia-actions/julia-buildpkg@v1
         with:
           git_cli: true
