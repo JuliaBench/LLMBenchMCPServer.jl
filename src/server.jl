@@ -59,6 +59,7 @@ function @main(args)
 
         Options:
             --workdir PATH      Working directory (default: current directory)
+            --socket PATH       Run server on Unix domain socket instead of stdio
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
             --help, -h          Show this help message
@@ -70,8 +71,9 @@ function @main(args)
             - grade(workdir::String, transcript::String) -> Dict/Number
                 Returns grading result with subscores, weights, and total score
 
-        Example:
+        Examples:
             julia --project -m LLMBenchMCPServer MyBenchmark
+            julia --project -m LLMBenchMCPServer MyBenchmark --socket /tmp/mcp.sock
         """)
         return 0
     end
@@ -79,6 +81,7 @@ function @main(args)
     # Parse arguments
     module_name = args[1]
     working_dir = pwd()
+    socket_path = nothing
     include_basic_tools = true
     verbose = false
 
@@ -86,6 +89,9 @@ function @main(args)
     while i <= length(args)
         if args[i] == "--workdir" && i + 1 <= length(args)
             working_dir = args[i + 1]
+            i += 2
+        elseif args[i] == "--socket" && i + 1 <= length(args)
+            socket_path = args[i + 1]
             i += 2
         elseif args[i] == "--no-basic-tools"
             include_basic_tools = false
@@ -146,10 +152,17 @@ function @main(args)
             println("Starting MCP server for $module_name")
             println("Working directory: $working_dir")
             println("Tools registered: $(keys(server.tools))")
+            if socket_path !== nothing
+                println("Socket path: $socket_path")
+            end
         end
 
-        # Run the server in stdio mode
-        ClaudeMCPTools.run_stdio_server(server, verbose=verbose)
+        # Run the server in appropriate mode
+        if socket_path !== nothing
+            ClaudeMCPTools.run_unix_socket_server(server, socket_path, verbose=verbose)
+        else
+            ClaudeMCPTools.run_stdio_server(server, verbose=verbose)
+        end
 
     catch e
         println(stderr, "Error: $e")
@@ -157,4 +170,10 @@ function @main(args)
     end
 
     return 0
+end
+
+# Compatibility function for direct module usage
+function main(args=ARGS)
+    # Delegate to @main function
+    (@main)(args)
 end
