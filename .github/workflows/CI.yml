@@ -32,7 +32,6 @@ jobs:
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
       - name: Setup SSH for private repos
-        if: ${{ secrets.DEPLOY_KEY != '' }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
