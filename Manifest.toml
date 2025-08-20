@@ -2,7 +2,7 @@
 
 julia_version = "1.13.0-DEV"
 manifest_format = "2.0"
-project_hash = "b422f973dddd338071bba7a7f9f22cad2ede4581"
+project_hash = "b80e681f4ebf05f6eba3c868de5fc47aa2cc335c"
 
 [[deps.ClaudeMCPTools]]
 deps = ["JSON"]
@@ -24,9 +24,16 @@ uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.21.4"
 
 [[deps.LLMBenchMCPServer]]
-deps = ["ClaudeMCPTools", "JSON"]
+deps = ["ClaudeMCPTools", "JSON", "LLMBenchSimple"]
 path = "."
 uuid = "78754875-2f68-464a-ac60-858ac662827f"
+version = "0.1.0"
+
+[[deps.LLMBenchSimple]]
+git-tree-sha1 = "bef6209dcebb2440637d0f455578ac3df832ef5c"
+repo-rev = "master"
+repo-url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
+uuid = "a7b3c4d5-e6f7-8901-2345-678901234567"
 version = "0.1.0"
 
 [[deps.Mmap]]

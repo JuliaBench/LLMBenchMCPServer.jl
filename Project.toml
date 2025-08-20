@@ -6,14 +6,14 @@ authors = ["JuliaComputing"]
 [deps]
 ClaudeMCPTools = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LLMBenchSimple = "a7b3c4d5-e6f7-8901-2345-678901234567"
 
 [sources]
 ClaudeMCPTools = {rev = "master", url = "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"}
-LLMBenchSimple = {url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"}
+LLMBenchSimple = {rev = "master", url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"}
 
 [extras]
-LLMBenchSimple = "a7b3c4d5-e6f7-8901-2345-678901234567"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "LLMBenchSimple"]
+test = ["Test"]
