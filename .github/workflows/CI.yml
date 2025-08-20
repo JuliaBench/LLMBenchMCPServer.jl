@@ -36,13 +36,12 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           
-          # Start ssh-agent and export variables for subsequent steps
-          eval "$(ssh-agent -s)"
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
-          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
+          # Write deploy key to file
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
           
-          # Add the deploy key to ssh-agent
-          echo "${{ secrets.DEPLOY_KEY }}" | ssh-add -
+          # Configure git to use the deploy key
+          git config --global core.sshCommand "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
       - uses: julia-actions/julia-buildpkg@v1
         env:
           JULIA_PKG_USE_CLI_GIT: "true"
