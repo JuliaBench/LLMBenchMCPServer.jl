@@ -27,34 +27,17 @@ jobs:
           - x64
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout ClaudeMCPTools
-        uses: actions/checkout@v4
-        with:
-          repository: JuliaComputing/ClaudeMCPTools.jl
-          path: ClaudeMCPTools
-      - name: Checkout LLMBenchSimple
-        uses: actions/checkout@v4
-        with:
-          repository: JuliaComputing/LLMBenchSimple.jl
-          path: LLMBenchSimple
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
-      - name: Update Project.toml for CI
+      - name: Dev dependencies
         shell: julia --color=yes {0}
         run: |
           using Pkg
-          # Update the Project.toml to use local paths
-          project = Pkg.TOML.parsefile("Project.toml")
-          project["sources"] = Dict(
-              "ClaudeMCPTools" => Dict("path" => "./ClaudeMCPTools"),
-              "LLMBenchSimple" => Dict("path" => "./LLMBenchSimple")
-          )
-          open("Project.toml", "w") do io
-              Pkg.TOML.print(io, project)
-          end
+          Pkg.develop(url="https://github.com/JuliaComputing/ClaudeMCPTools.jl")
+          Pkg.develop(url="https://github.com/JuliaComputing/LLMBenchSimple.jl")
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
