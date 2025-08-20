@@ -6,7 +6,9 @@ project_hash = "b422f973dddd338071bba7a7f9f22cad2ede4581"
 
 [[deps.ClaudeMCPTools]]
 deps = ["JSON"]
-path = "../ClaudeMCPTools"
+git-tree-sha1 = "9b896351226ba85681ccc8769549eab32812337e"
+repo-rev = "master"
+repo-url = "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"
 uuid = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
 version = "0.1.0"
 
