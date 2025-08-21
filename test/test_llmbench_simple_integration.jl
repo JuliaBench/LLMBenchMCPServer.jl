@@ -1,37 +1,37 @@
-@testset "LLMBenchSimple Integration" begin
-    # Create a test module directly
-    module SimpleBenchModule
-        using LLMBenchSimple: _setup_problem_impl, _grade_impl, PromptPlaceholder
-        
-        # Create module-local benchmarks
-        const BENCHMARKS = Dict{String, Any}()
-        
-        function __init__()
-            # Clear any existing benchmarks
-            empty!(BENCHMARKS)
-            
-            # Add benchmarks manually
-            BENCHMARKS["math1"] = (
-                prompt_expr = :(PromptPlaceholder("What is 5 + 3?") == 8),
-                original_expr = nothing
-            )
-            
-            BENCHMARKS["math2"] = (
-                prompt_expr = :(PromptPlaceholder("What is 10 - 4?") == 6),
-                original_expr = nothing
-            )
-        end
-        
-        # Create wrapper functions that use our module's benchmarks
-        function setup_problem(workdir::String, problem_id::String="")
-            return _setup_problem_impl(@__MODULE__, workdir, problem_id)
-        end
-        
-        function grade(workdir::String, transcript::String, problem_id::String="")
-            return _grade_impl(@__MODULE__, workdir, transcript, problem_id)
-        end
-    end # module
+# Create a test module directly
+module SimpleBenchModule
+    using LLMBenchSimple: _setup_problem_impl, _grade_impl, PromptPlaceholder
     
+    # Create module-local benchmarks
+    const BENCHMARKS = Dict{String, Any}()
+    
+    function __init__()
+        # Clear any existing benchmarks
+        empty!(BENCHMARKS)
+        
+        # Add benchmarks manually
+        BENCHMARKS["math1"] = (
+            prompt_expr = :(PromptPlaceholder("What is 5 + 3?") == 8),
+            original_expr = nothing
+        )
+        
+        BENCHMARKS["math2"] = (
+            prompt_expr = :(PromptPlaceholder("What is 10 - 4?") == 6),
+            original_expr = nothing
+        )
+    end
+    
+    # Create wrapper functions that use our module's benchmarks
+    function setup_problem(workdir::String, problem_id::String="")
+        return _setup_problem_impl(@__MODULE__, workdir, problem_id)
+    end
+    
+    function grade(workdir::String, transcript::String, problem_id::String="")
+        return _grade_impl(@__MODULE__, workdir, transcript, problem_id)
+    end
+end # module
+
+@testset "LLMBenchSimple Integration" begin
     @testset "Module with LLMBenchSimple functions" begin
         # Get the module
         mod = Main.SimpleBenchModule
