@@ -118,6 +118,97 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
 end
 
 """
+    launch_in_sandbox(args::Vector{String})
+
+Re-launch the LLMBenchMCPServer inside a Sandbox.jl sandbox.
+"""
+function launch_in_sandbox(args::Vector{String})::Cint
+    # Check if Sandbox is available
+    Sandbox = nothing
+    try
+        # Try to load Sandbox - it should be available if running within ClaudeBox
+        Sandbox = Base.require(Base.PkgId(Base.UUID("a4e034a1-bbed-5493-bc6f-f0a4e1c5e439"), "Sandbox"))
+    catch e
+        # Sandbox not available, provide helpful error message
+        println(stderr, """
+        Error: Sandbox.jl is required for sandboxed execution but is not available.
+        
+        Options:
+        1. Run with --direct flag to execute without sandboxing:
+           julia --project -m LLMBenchMCPServer ModuleName --direct
+           
+        2. Run from within ClaudeBox environment where Sandbox.jl is available
+        
+        3. Install Sandbox.jl (requires BinaryBuilder2 ecosystem):
+           ] add Sandbox
+        """)
+        return Cint(1)
+    end
+    
+    # Get the host platform
+    host_platform = Base.BinaryPlatforms.HostPlatform()
+    
+    # Create minimal mounts for the sandbox
+    # We'll use a minimal Debian rootfs and mount the Julia installation
+    mounts = Dict{String, Any}(
+        "/" => Sandbox.MountInfo(Sandbox.debian_rootfs(; platform=host_platform), Sandbox.MountType.Overlayed),
+        "/workspace" => Sandbox.MountInfo(pwd(), Sandbox.MountType.ReadWrite),
+    )
+    
+    # Mount the Julia installation directory
+    julia_bin = Base.julia_cmd().exec[1]
+    julia_dir = dirname(dirname(julia_bin))  # Get Julia installation directory
+    if isdir(julia_dir)
+        mounts["/opt/julia"] = Sandbox.MountInfo(julia_dir, Sandbox.MountType.ReadOnly)
+    end
+    
+    # Mount the current project directory (where LLMBenchMCPServer is)
+    project_dir = dirname(dirname(@__FILE__))
+    mounts["/opt/llmbench"] = Sandbox.MountInfo(project_dir, Sandbox.MountType.ReadOnly)
+    
+    # Set up environment variables
+    env = Dict{String, String}(
+        "PATH" => "/opt/julia/bin:/usr/local/bin:/usr/bin:/bin",
+        "HOME" => "/root",
+        "USER" => "root",
+        "JULIA_PROJECT" => "/opt/llmbench",
+    )
+    
+    # Build the command to run inside the sandbox
+    # Add --direct flag to prevent infinite recursion
+    new_args = copy(args)
+    push!(new_args, "--direct")
+    
+    # Build the Julia command
+    cmd = Cmd(["/opt/julia/bin/julia", "--project=/opt/llmbench", "-m", "LLMBenchMCPServer"])
+    cmd = `$cmd $new_args`
+    
+    # Create the sandbox configuration
+    config = Sandbox.SandboxConfig(
+        mounts,
+        env;
+        stdin=Base.stdin,
+        stdout=Base.stdout,
+        stderr=Base.stderr,
+        pwd="/workspace"
+    )
+    
+    # Run in the sandbox
+    exit_code = Cint(0)
+    try
+        Sandbox.with_executor() do exe
+            # Run the command in the sandbox
+            run(exe, config, cmd)
+        end
+    catch e
+        println(stderr, "Error running in sandbox: $e")
+        exit_code = Cint(1)
+    end
+    
+    return exit_code
+end
+
+"""
     LLMBenchServer
 
 An MCP server specifically for LLM benchmarking with setup and grade functions.
@@ -179,6 +270,7 @@ function @main(args)
             --revise            Load Revise.jl and auto-reload code changes
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
+            --direct            Run directly without sandboxing (default: run in sandbox)
             --help, -h          Show this help message
 
         The specified module should export:
@@ -191,6 +283,7 @@ function @main(args)
         Examples:
             julia --project -m LLMBenchMCPServer MyBenchmark
             julia --project -m LLMBenchMCPServer MyBenchmark --socket
+            julia --project -m LLMBenchMCPServer MyBenchmark --direct  # Run without sandbox
         """)
         return 0
     end
@@ -203,6 +296,7 @@ function @main(args)
     use_revise = false
     include_basic_tools = true
     verbose = false
+    direct_mode = false  # New flag for direct execution
 
     i = 2
     while i <= length(args)
@@ -225,10 +319,27 @@ function @main(args)
         elseif args[i] == "--verbose"
             verbose = true
             i += 1
+        elseif args[i] == "--direct"
+            direct_mode = true
+            i += 1
         else
             println("Warning: Unknown option: $(args[i])")
             i += 1
         end
+    end
+    
+    # If not in direct mode, re-launch ourselves in a sandbox
+    if !direct_mode
+        if verbose
+            println("Launching LLMBenchMCPServer in sandbox...")
+            println("Note: Sandbox mode requires Sandbox.jl from BinaryBuilder2 ecosystem")
+        end
+        return launch_in_sandbox(args)
+    end
+    
+    # In direct mode, show a warning if verbose
+    if verbose && direct_mode
+        println("Running in DIRECT mode (no sandboxing)")
     end
 
     # Load Revise if requested
@@ -253,9 +364,37 @@ function @main(args)
 
     # Load the module
     try
-        # Load the module using Base.require
+        # Try to load as a module first, then as a file
+        mod = nothing
         mod_symbol = Symbol(module_name)
-        mod = Base.require(Main, mod_symbol)
+        
+        # First try to load as a registered package/module
+        try
+            mod = Base.require(Main, mod_symbol)
+        catch
+            # If that fails, try to load as a local file
+            if endswith(module_name, ".jl")
+                # Load file directly
+                Base.include(Main, module_name)
+                # Extract module name from file
+                file_mod_name = basename(module_name)[1:end-3]  # Remove .jl
+                mod_symbol = Symbol(file_mod_name)
+                if isdefined(Main, mod_symbol)
+                    mod = getfield(Main, mod_symbol)
+                end
+            elseif isfile(module_name * ".jl")
+                # Try adding .jl extension
+                Base.include(Main, module_name * ".jl")
+                mod_symbol = Symbol(module_name)
+                if isdefined(Main, mod_symbol)
+                    mod = getfield(Main, mod_symbol)
+                end
+            end
+        end
+        
+        if mod === nothing
+            throw(ArgumentError("Could not load module $module_name"))
+        end
 
         # Extract functions
         setup_fn = nothing
