@@ -30,7 +30,7 @@ uuid = "78754875-2f68-464a-ac60-858ac662827f"
 version = "0.1.0"
 
 [[deps.LLMBenchSimple]]
-git-tree-sha1 = "65cb91ea6f18244623fa484cadef9965e7ab3f3b"
+git-tree-sha1 = "0c199c4f94db33217d165d42062c0822caeeb17e"
 repo-rev = "master"
 repo-url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
 uuid = "a7b3c4d5-e6f7-8901-2345-678901234567"
