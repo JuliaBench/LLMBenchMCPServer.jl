@@ -44,12 +44,11 @@
             Base.invokelatest(mod.__init__)
             
             mktempdir() do workdir
-                # Test setup_problem for all problems
+                # Test setup_problem with empty problem_id (should return error)
                 description = Base.invokelatest(mod.setup_problem, workdir, "")
+                @test occursin("problem_id is required", description)
                 @test occursin("math1", description)
-                @test occursin("5 + 3", description)
                 @test occursin("math2", description)
-                @test occursin("10 - 4", description)
                 
                 # Test setup_problem for specific problem
                 description = Base.invokelatest(mod.setup_problem, workdir, "math1")
@@ -67,11 +66,10 @@
                 result = Base.invokelatest(mod.grade, workdir, "7", "math1")
                 @test result["score"] == 0.0
                 
-                # Test grading all problems (with mixed results)
+                # Test grading with empty problem_id (should return error)
                 result = Base.invokelatest(mod.grade, workdir, "8", "")
-                @test haskey(result, "subscores")
-                @test result["subscores"]["math1"] == 1.0  # "8" is correct for 5+3
-                @test result["subscores"]["math2"] == 0.0  # "8" is incorrect for 10-4
+                @test result["score"] == 0.0
+                @test occursin("problem_id is required", result["details"])
             end
         end
         
@@ -81,8 +79,8 @@
             
             mktempdir() do workdir
                 # Create server using the module's functions (wrapped for world age)
-                setup_wrapper = (wd) -> Base.invokelatest(Main.SimpleBenchModule.setup_problem, wd, "")
-                grade_wrapper = (wd, t) -> Base.invokelatest(Main.SimpleBenchModule.grade, wd, t, "")
+                setup_wrapper = (wd, pid="") -> Base.invokelatest(Main.SimpleBenchModule.setup_problem, wd, pid)
+                grade_wrapper = (wd, t, pid="") -> Base.invokelatest(Main.SimpleBenchModule.grade, wd, t, pid)
                 
                 server = LLMBenchMCPServer.LLMBenchServer(
                     name="SimpleBenchModule",
@@ -103,8 +101,10 @@
                 )
                 
                 response = ClaudeMCPTools.handle_request(server, request)
-                @test occursin("5 + 3", response["result"]["content"][1]["text"])
-                @test occursin("10 - 4", response["result"]["content"][1]["text"])
+                # When no problem_id is provided, it should return an error message listing available problems
+                @test occursin("problem_id is required", response["result"]["content"][1]["text"])
+                @test occursin("math1", response["result"]["content"][1]["text"])
+                @test occursin("math2", response["result"]["content"][1]["text"])
                 
                 # Test grading through MCP
                 request = Dict(

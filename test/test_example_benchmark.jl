@@ -95,8 +95,8 @@
         @testset "Integration with LLMBenchServer" begin
             mktempdir() do workdir
                 # Create server using the module's functions (wrapped for world age)
-                setup_wrapper = (wd) -> Base.invokelatest(Main.ExampleBenchmark.setup_problem, wd)
-                grade_wrapper = (wd, t) -> Base.invokelatest(Main.ExampleBenchmark.grade, wd, t)
+                setup_wrapper = (wd, pid="") -> Base.invokelatest(Main.ExampleBenchmark.setup_problem, wd, pid)
+                grade_wrapper = (wd, t, pid="") -> Base.invokelatest(Main.ExampleBenchmark.grade, wd, t, pid)
                 
                 server = LLMBenchMCPServer.LLMBenchServer(
                     name="ExampleBenchmark",
