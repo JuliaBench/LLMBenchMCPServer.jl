@@ -3,6 +3,9 @@ uuid = "78754875-2f68-464a-ac60-858ac662827f"
 version = "0.1.0"
 authors = ["JuliaComputing"]
 
+[compat]
+julia = "1.12"
+
 [deps]
 ClaudeMCPTools = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

@@ -3,7 +3,7 @@
     using ClaudeMCPTools: tool_schema, execute
     
     @testset "Tool schema" begin
-        grade_fn = (workdir, transcript) -> 1.0
+        grade_fn = (workdir, transcript, problem_id="") -> 1.0
         tool = LLMBenchMCPServer.GradeProblemTool(grade_fn)
         
         schema = tool_schema(tool)
@@ -14,7 +14,7 @@
     end
     
     @testset "Execute with dict return" begin
-        grade_fn = (workdir, transcript) -> Dict(
+        grade_fn = (workdir, transcript, problem_id="") -> Dict(
             "subscores" => Dict("task1" => 0.8, "task2" => 0.9),
             "weights" => Dict("task1" => 0.5, "task2" => 0.5),
             "score" => 0.85
@@ -32,7 +32,7 @@
     end
     
     @testset "Execute with numeric return" begin
-        grade_fn = (workdir, transcript) -> 0.75
+        grade_fn = (workdir, transcript, problem_id="") -> 0.75
         tool = LLMBenchMCPServer.GradeProblemTool(grade_fn)
         
         result = execute(tool, Dict("transcript" => "Test transcript"))
@@ -44,7 +44,7 @@
     end
     
     @testset "Auto-calculate score" begin
-        grade_fn = (workdir, transcript) -> Dict(
+        grade_fn = (workdir, transcript, problem_id="") -> Dict(
             "subscores" => Dict("task1" => 0.6, "task2" => 0.8),
             "weights" => Dict("task1" => 0.3, "task2" => 0.7)
             # No score provided - should be calculated
@@ -60,7 +60,7 @@
     
     @testset "Transcript access" begin
         mktempdir() do tmpdir
-            grade_fn = function(workdir, transcript)
+            grade_fn = function(workdir, transcript, problem_id="")
                 # Check transcript content
                 if occursin("correct answer", transcript)
                     return 1.0
@@ -84,7 +84,7 @@
     end
     
     @testset "Error handling" begin
-        grade_fn = (workdir, transcript) -> error("Grading failed!")
+        grade_fn = (workdir, transcript, problem_id="") -> error("Grading failed!")
         tool = LLMBenchMCPServer.GradeProblemTool(grade_fn)
         
         result = execute(tool, Dict("transcript" => "Test"))

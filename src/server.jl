@@ -2,22 +2,16 @@
 LLM Benchmark MCP Server implementation
 """
 
-# Load Revise once per process
-# OncePerProcess is only available in Julia 1.12+, so we use a fallback for older versions
-const REVISE_LOADED = Ref{Union{Module,Nothing,Bool}}(nothing)
-
-function load_revise()
-    if REVISE_LOADED[] === nothing
-        try
-            # Use PkgId to load Revise
-            revise_pkg = Base.PkgId(Base.UUID("295af30f-e4ad-537b-8983-00126c2a3abe"), "Revise")
-            REVISE_LOADED[] = Base.require(revise_pkg)
-        catch e
-            @warn "Failed to load Revise package" exception=e
-            REVISE_LOADED[] = false  # Mark as attempted but failed
-        end
+# Load Revise once per process using OncePerProcess
+const load_revise = Base.OncePerProcess{Union{Module,Nothing}}() do
+    try
+        # Use PkgId to load Revise
+        revise_pkg = Base.PkgId(Base.UUID("295af30f-e4ad-537b-8983-00126c2a3abe"), "Revise")
+        return Base.require(revise_pkg)
+    catch e
+        @warn "Failed to load Revise package" exception=e
+        return nothing
     end
-    return REVISE_LOADED[] isa Module ? REVISE_LOADED[] : nothing
 end
 
 """
