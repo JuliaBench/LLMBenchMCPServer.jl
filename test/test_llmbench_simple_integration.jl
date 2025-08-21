@@ -8,7 +8,7 @@
         
         # Note: We can't use the prompt"..." macro directly in dynamically created code
         # So we'll manually set up the benchmarks
-        import LLMBenchSimple
+        using LLMBenchSimple: _setup_problem_impl, _grade_impl, PromptPlaceholder
         
         # Create module-local benchmarks
         const BENCHMARKS = Dict{String, Any}()
@@ -19,23 +19,23 @@
             
             # Add benchmarks manually
             BENCHMARKS["math1"] = (
-                prompt_expr = :(LLMBenchSimple.PromptPlaceholder("What is 5 + 3?") == 8),
+                prompt_expr = :(PromptPlaceholder("What is 5 + 3?") == 8),
                 original_expr = nothing
             )
             
             BENCHMARKS["math2"] = (
-                prompt_expr = :(LLMBenchSimple.PromptPlaceholder("What is 10 - 4?") == 6),
+                prompt_expr = :(PromptPlaceholder("What is 10 - 4?") == 6),
                 original_expr = nothing
             )
         end
         
         # Create wrapper functions that use our module's benchmarks
         function setup_problem(workdir::String, problem_id::String="")
-            return LLMBenchSimple._setup_problem_impl(@__MODULE__, workdir, problem_id)
+            return _setup_problem_impl(@__MODULE__, workdir, problem_id)
         end
         
         function grade(workdir::String, transcript::String, problem_id::String="")
-            return LLMBenchSimple._grade_impl(@__MODULE__, workdir, transcript, problem_id)
+            return _grade_impl(@__MODULE__, workdir, transcript, problem_id)
         end
         
         end # module
