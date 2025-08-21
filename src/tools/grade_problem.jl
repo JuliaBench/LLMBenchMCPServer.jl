@@ -75,10 +75,13 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 result["score"] = total
             end
             
-            return Dict("content" => [Dict(
-                "type" => "text",
-                "text" => JSON.json(result)
-            )])
+            return Dict(
+                "content" => [Dict(
+                    "type" => "text",
+                    "text" => JSON.json(result)
+                )],
+                "isError" => false
+            )
             
         elseif isa(result, Number)
             # Simple numeric score
@@ -125,9 +128,12 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             "error" => error_msg
         )
         
-        return Dict("content" => [Dict(
-            "type" => "text",
-            "text" => JSON.json(grading_result)
-        )])
+        return Dict(
+            "content" => [Dict(
+                "type" => "text",
+                "text" => JSON.json(grading_result)
+            )],
+            "isError" => true
+        )
     end
 end

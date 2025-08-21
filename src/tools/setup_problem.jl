@@ -49,10 +49,13 @@ function ClaudeMCPTools.execute(tool::SetupProblemTool, params::Dict)
             description = string(result)
         end
         
-        return Dict("content" => [Dict(
-            "type" => "text",
-            "text" => description
-        )])
+        return Dict(
+            "content" => [Dict(
+                "type" => "text",
+                "text" => description
+            )],
+            "isError" => false
+        )
         
     catch e
         # Get a proper error message with backtrace
@@ -63,9 +66,12 @@ function ClaudeMCPTools.execute(tool::SetupProblemTool, params::Dict)
         # Also print to stderr for debugging
         @error "Setup problem failed" exception=(e, catch_backtrace())
         
-        return Dict("content" => [Dict(
-            "type" => "text",
-            "text" => error_msg
-        )])
+        return Dict(
+            "content" => [Dict(
+                "type" => "text",
+                "text" => error_msg
+            )],
+            "isError" => true
+        )
     end
 end
