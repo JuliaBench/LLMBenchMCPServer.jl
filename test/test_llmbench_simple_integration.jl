@@ -1,13 +1,6 @@
 @testset "LLMBenchSimple Integration" begin
-    # Create a test module using LLMBenchSimple
-    mktempdir() do tmpdir
-        module_file = joinpath(tmpdir, "SimpleBenchModule.jl")
-        
-        write(module_file, """
-        module SimpleBenchModule
-        
-        # Note: We can't use the prompt"..." macro directly in dynamically created code
-        # So we'll manually set up the benchmarks
+    # Create a test module directly
+    module SimpleBenchModule
         using LLMBenchSimple: _setup_problem_impl, _grade_impl, PromptPlaceholder
         
         # Create module-local benchmarks
@@ -37,21 +30,16 @@
         function grade(workdir::String, transcript::String, problem_id::String="")
             return _grade_impl(@__MODULE__, workdir, transcript, problem_id)
         end
+    end # module
+    
+    @testset "Module with LLMBenchSimple functions" begin
+        # Get the module
+        mod = Main.SimpleBenchModule
         
-        end # module
-        """)
+        # Initialize the module to set up benchmarks
+        Base.invokelatest(mod.__init__)
         
-        # Load the module
-        include(module_file)
-        
-        @testset "Module with LLMBenchSimple functions" begin
-            # Get the module
-            mod = Main.SimpleBenchModule
-            
-            # Initialize the module to set up benchmarks
-            Base.invokelatest(mod.__init__)
-            
-            mktempdir() do workdir
+        mktempdir() do workdir
                 # Test setup_problem with empty problem_id (should return error)
                 description = Base.invokelatest(mod.setup_problem, workdir, "")
                 @test occursin("problem_id is required", description)
