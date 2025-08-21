@@ -37,15 +37,10 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
     transcript = get(params, "transcript", "")
     
     try
-        # Call the grade function with the correct arguments based on its signature
+        # Call the grade function with all arguments
         # Use invokelatest to handle world age issues when loading modules dynamically
-        if hasmethod(tool.grade_fn, Tuple{String, String, String})
-            # Function expects (workdir, transcript, problem_id)
-            result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
-        else
-            # Function expects just (workdir, transcript)
-            result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript)
-        end
+        # Always pass all three parameters - the function has a default value for problem_id
+        result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
         
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
