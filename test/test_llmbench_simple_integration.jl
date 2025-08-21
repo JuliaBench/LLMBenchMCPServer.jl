@@ -52,18 +52,24 @@ end # module
                 @test !occursin("10 - 4", description)
                 
                 # Test grading with correct answers
-                result = Base.invokelatest(mod.grade, workdir, "8", "math1")
+                result = Base.invokelatest(mod.grade, workdir, "<answer>8</answer>", "math1")
+                if result["score"] != 1.0
+                    @info "Grade result for math1 with answer 8" result
+                end
                 @test result["score"] == 1.0
                 
-                result = Base.invokelatest(mod.grade, workdir, "6", "math2")
+                result = Base.invokelatest(mod.grade, workdir, "<answer>6</answer>", "math2")
+                if result["score"] != 1.0
+                    @info "Grade result for math2 with answer 6" result
+                end
                 @test result["score"] == 1.0
                 
                 # Test grading with incorrect answer
-                result = Base.invokelatest(mod.grade, workdir, "7", "math1")
+                result = Base.invokelatest(mod.grade, workdir, "<answer>7</answer>", "math1")
                 @test result["score"] == 0.0
                 
                 # Test grading with empty problem_id (should return error)
-                result = Base.invokelatest(mod.grade, workdir, "8", "")
+                result = Base.invokelatest(mod.grade, workdir, "<answer>8</answer>", "")
                 @test result["score"] == 0.0
                 @test occursin("problem_id is required", result["details"])
             end
@@ -102,25 +108,49 @@ end # module
                 @test occursin("math1", response["result"]["content"][1]["text"])
                 @test occursin("math2", response["result"]["content"][1]["text"])
                 
-                # Test grading through MCP
+                # Test grading through MCP for math1
                 request = Dict(
                     "jsonrpc" => "2.0",
                     "id" => 2,
                     "method" => "tools/call",
                     "params" => Dict(
                         "name" => "grade_problem",
-                        "arguments" => Dict("transcript" => "8")  # Answer to first problem
+                        "arguments" => Dict(
+                            "transcript" => "<answer>8</answer>",
+                            "problem_id" => "math1"
+                        )
                     )
                 )
                 
                 response = ClaudeMCPTools.handle_request(server, request)
                 grade_result = JSON.parse(response["result"]["content"][1]["text"])
                 
-                # Should have graded both problems
+                # Should have graded math1 correctly
                 @test haskey(grade_result, "subscores")
                 @test grade_result["subscores"]["math1"] == 1.0  # Correct
+                @test grade_result["score"] == 1.0
+                
+                # Test grading through MCP for math2
+                request = Dict(
+                    "jsonrpc" => "2.0",
+                    "id" => 3,
+                    "method" => "tools/call",
+                    "params" => Dict(
+                        "name" => "grade_problem",
+                        "arguments" => Dict(
+                            "transcript" => "<answer>5</answer>",  # Wrong answer
+                            "problem_id" => "math2"
+                        )
+                    )
+                )
+                
+                response = ClaudeMCPTools.handle_request(server, request)
+                grade_result = JSON.parse(response["result"]["content"][1]["text"])
+                
+                # Should have graded math2 incorrectly
+                @test haskey(grade_result, "subscores")
                 @test grade_result["subscores"]["math2"] == 0.0  # Incorrect
+                @test grade_result["score"] == 0.0
             end
         end
-    end
 end
