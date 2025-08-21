@@ -68,11 +68,23 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
                     try
                         request = JSON.parse(line)
                         
+                        # Log incoming message to stderr in verbose mode
+                        if verbose
+                            println(stderr, "Incoming message: ", JSON.json(request, 2))
+                            flush(stderr)
+                        end
+                        
                         # Use invokelatest for the handler to ensure we use refreshed code
                         response = if use_revise
                             Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
                         else
                             ClaudeMCPTools.handle_request(server, request)
+                        end
+                        
+                        # Log outgoing response to stderr in verbose mode
+                        if verbose
+                            println(stderr, "Outgoing response: ", JSON.json(response, 2))
+                            flush(stderr)
                         end
                         
                         # Send response
