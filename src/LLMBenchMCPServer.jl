@@ -3,6 +3,7 @@ module LLMBenchMCPServer
 using ClaudeMCPTools
 using JSON
 using Dates
+using Sockets
 
 export LLMBenchServer, SetupProblemTool, GradeProblemTool
 export main

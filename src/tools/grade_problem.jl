@@ -33,12 +33,19 @@ function ClaudeMCPTools.tool_schema(::GradeProblemTool)
 end
 
 function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
-    problem_id = get(params, "problem_id", "default")
+    problem_id = get(params, "problem_id", "")
     transcript = get(params, "transcript", "")
     
     try
-        # Call the grade function with working directory and transcript
-        result = tool.grade_fn(tool.working_dir, transcript)
+        # Call the grade function with the correct arguments based on its signature
+        # Use invokelatest to handle world age issues when loading modules dynamically
+        if hasmethod(tool.grade_fn, Tuple{String, String, String})
+            # Function expects (workdir, transcript, problem_id)
+            result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
+        else
+            # Function expects just (workdir, transcript)
+            result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript)
+        end
         
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
@@ -107,7 +114,13 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         end
         
     catch e
-        error_msg = "Failed to grade problem: " * string(e)
+        # Get a proper error message with backtrace
+        io = IOBuffer()
+        showerror(io, e, catch_backtrace())
+        error_msg = "Failed to grade problem:\n" * String(take!(io))
+        
+        # Also print to stderr for debugging
+        @error "Grade problem failed" exception=(e, catch_backtrace())
         
         # Return a failed grade with error
         grading_result = Dict(

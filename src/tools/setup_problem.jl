@@ -29,11 +29,18 @@ function ClaudeMCPTools.tool_schema(::SetupProblemTool)
 end
 
 function ClaudeMCPTools.execute(tool::SetupProblemTool, params::Dict)
-    problem_id = get(params, "problem_id", "default")
+    problem_id = get(params, "problem_id", "")
     
     try
-        # Call the setup function with the working directory
-        result = tool.setup_fn(tool.working_dir)
+        # Call the setup function with the working directory and problem_id
+        # Use invokelatest to handle world age issues when loading modules dynamically
+        if hasmethod(tool.setup_fn, Tuple{String, String})
+            # Function expects (workdir, problem_id)
+            result = Base.invokelatest(tool.setup_fn, tool.working_dir, problem_id)
+        else
+            # Function expects just (workdir)
+            result = Base.invokelatest(tool.setup_fn, tool.working_dir)
+        end
         
         # The setup function should return a problem description
         # Format it as a proper MCP response
@@ -52,7 +59,14 @@ function ClaudeMCPTools.execute(tool::SetupProblemTool, params::Dict)
         )])
         
     catch e
-        error_msg = "Failed to setup problem: " * string(e)
+        # Get a proper error message with backtrace
+        io = IOBuffer()
+        showerror(io, e, catch_backtrace())
+        error_msg = "Failed to setup problem:\n" * String(take!(io))
+        
+        # Also print to stderr for debugging
+        @error "Setup problem failed" exception=(e, catch_backtrace())
+        
         return Dict("content" => [Dict(
             "type" => "text",
             "text" => error_msg

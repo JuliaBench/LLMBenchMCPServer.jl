@@ -2,6 +2,109 @@
 LLM Benchmark MCP Server implementation
 """
 
+# Load Revise once per process using OncePerProcess
+const load_revise = Base.OncePerProcess{Union{Module,Nothing}}() do
+    try
+        # Use PkgId to load Revise
+        revise_pkg = Base.PkgId(Base.UUID("295af30f-e4ad-537b-8983-00126c2a3abe"), "Revise")
+        return Base.require(revise_pkg)
+    catch e
+        @warn "Failed to load Revise package" exception=e
+        return nothing
+    end
+end
+
+"""
+Run the Unix socket server with optional Revise support.
+"""
+function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::String; 
+                                verbose::Bool=false, use_revise::Bool=false)
+    # Clean up existing socket if it exists
+    if isfile(socket_path)
+        rm(socket_path)
+    end
+    
+    # Create the Unix socket
+    socket = Sockets.listen(socket_path)
+    
+    if verbose
+        @info "MCP server listening on Unix socket: $socket_path"
+    end
+    
+    try
+        while true
+            # Accept connection
+            client = Sockets.accept(socket)
+            
+            # Handle client in async task
+            @async try
+                while isopen(client)
+                    # Read a line (JSON-RPC message)
+                    line = readline(client)
+                    if isempty(line)
+                        break
+                    end
+                    
+                    # Call Revise before processing if requested
+                    if use_revise
+                        revise_mod = load_revise()
+                        if revise_mod !== nothing
+                            try
+                                # Use invokelatest to handle world age issues
+                                Base.invokelatest(revise_mod.revise)
+                                if verbose
+                                    @debug "Revise.revise() called before processing request"
+                                end
+                            catch e
+                                if verbose
+                                    @warn "Revise.revise() failed" exception=e
+                                end
+                            end
+                        end
+                    end
+                    
+                    # Parse and handle the request
+                    request = nothing
+                    try
+                        request = JSON.parse(line)
+                        
+                        # Use invokelatest for the handler to ensure we use refreshed code
+                        response = if use_revise
+                            Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
+                        else
+                            ClaudeMCPTools.handle_request(server, request)
+                        end
+                        
+                        # Send response
+                        println(client, JSON.json(response))
+                        flush(client)
+                    catch e
+                        # Send error response
+                        error_response = Dict(
+                            "jsonrpc" => "2.0",
+                            "error" => Dict(
+                                "code" => -32603,
+                                "message" => "Internal error: $(string(e))"
+                            ),
+                            "id" => request !== nothing ? get(request, "id", nothing) : nothing
+                        )
+                        println(client, JSON.json(error_response))
+                        flush(client)
+                    end
+                end
+            catch e
+                if verbose
+                    @error "Client connection error" exception=(e, catch_backtrace())
+                end
+            finally
+                close(client)
+            end
+        end
+    finally
+        close(socket)
+    end
+end
+
 """
     LLMBenchServer
 
@@ -60,6 +163,8 @@ function @main(args)
         Options:
             --workdir PATH      Working directory (default: current directory)
             --socket            Run server on Unix domain socket (creates socket in /tmp)
+            --bind-socket PATH  Run server on Unix domain socket at specified path
+            --revise            Load Revise.jl and auto-reload code changes
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
             --help, -h          Show this help message
@@ -82,6 +187,8 @@ function @main(args)
     module_name = args[1]
     working_dir = pwd()
     use_socket = false
+    socket_path = ""  # For --bind-socket
+    use_revise = false
     include_basic_tools = true
     verbose = false
 
@@ -93,6 +200,13 @@ function @main(args)
         elseif args[i] == "--socket"
             use_socket = true
             i += 1
+        elseif args[i] == "--bind-socket" && i + 1 <= length(args)
+            use_socket = true
+            socket_path = args[i + 1]
+            i += 2
+        elseif args[i] == "--revise"
+            use_revise = true
+            i += 1
         elseif args[i] == "--no-basic-tools"
             include_basic_tools = false
             i += 1
@@ -102,6 +216,21 @@ function @main(args)
         else
             println("Warning: Unknown option: $(args[i])")
             i += 1
+        end
+    end
+
+    # Load Revise if requested
+    if use_revise
+        try
+            # Load Revise dynamically
+            Base.require(Main, :Revise)
+            if verbose
+                println("Revise.jl loaded for auto-reloading")
+            end
+        catch e
+            println(stderr, "Warning: Could not load Revise.jl: $e")
+            println(stderr, "Install with: using Pkg; Pkg.add(\"Revise\")")
+            use_revise = false
         end
     end
 
@@ -156,16 +285,25 @@ function @main(args)
 
         # Run the server in appropriate mode
         if use_socket
-            # Generate a unique socket path in /tmp
-            timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
-            pid = getpid()
-            socket_path = "/tmp/mcp_$(module_name)_$(timestamp)_$(pid).sock"
+            # Use provided socket path or generate a unique one
+            if isempty(socket_path)
+                # Generate a unique socket path in /tmp
+                timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
+                pid = getpid()
+                socket_path = "/tmp/mcp_$(module_name)_$(timestamp)_$(pid).sock"
+            end
             
             println("Socket path: $socket_path")
             
-            # Run server and ensure cleanup on exit
+            # Run server with or without Revise
             try
-                ClaudeMCPTools.run_unix_socket_server(server, socket_path, verbose=verbose, cleanup=true)
+                if use_revise
+                    # Use our custom server that calls Revise before each request
+                    run_server_with_revise(server, socket_path, verbose=verbose, use_revise=true)
+                else
+                    # Use the standard ClaudeMCPTools server
+                    ClaudeMCPTools.run_unix_socket_server(server, socket_path, verbose=verbose, cleanup=true)
+                end
             finally
                 # Ensure socket is cleaned up even on error
                 if isfile(socket_path)
@@ -176,6 +314,10 @@ function @main(args)
                 end
             end
         else
+            # For stdio mode, we can't easily intercept requests, so warn if Revise is requested
+            if use_revise
+                println(stderr, "Warning: --revise is not supported in stdio mode, only in socket mode")
+            end
             ClaudeMCPTools.run_stdio_server(server, verbose=verbose)
         end
 
