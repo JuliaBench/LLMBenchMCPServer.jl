@@ -10,25 +10,33 @@
         # So we'll manually set up the benchmarks
         import LLMBenchSimple
         
+        # Create module-local benchmarks
+        const BENCHMARKS = Dict{String, Any}()
+        
         function __init__()
             # Clear any existing benchmarks
-            empty!(LLMBenchSimple.BENCHMARKS)
+            empty!(BENCHMARKS)
             
             # Add benchmarks manually
-            LLMBenchSimple.BENCHMARKS["math1"] = (
-                prompt_expr = :(LLMBenchSimple.PromptPlaceholder("What is 5 + 3?") == "8"),
+            BENCHMARKS["math1"] = (
+                prompt_expr = :(LLMBenchSimple.PromptPlaceholder("What is 5 + 3?") == 8),
                 original_expr = nothing
             )
             
-            LLMBenchSimple.BENCHMARKS["math2"] = (
-                prompt_expr = :(LLMBenchSimple.PromptPlaceholder("What is 10 - 4?") == "6"),
+            BENCHMARKS["math2"] = (
+                prompt_expr = :(LLMBenchSimple.PromptPlaceholder("What is 10 - 4?") == 6),
                 original_expr = nothing
             )
         end
         
-        # Export the setup and grade functions from LLMBenchSimple
-        const setup_problem = LLMBenchSimple.setup_problem
-        const grade = LLMBenchSimple.grade
+        # Create wrapper functions that use our module's benchmarks
+        function setup_problem(workdir::String, problem_id::String="")
+            return LLMBenchSimple._setup_problem_impl(@__MODULE__, workdir, problem_id)
+        end
+        
+        function grade(workdir::String, transcript::String, problem_id::String="")
+            return LLMBenchSimple._grade_impl(@__MODULE__, workdir, transcript, problem_id)
+        end
         
         end # module
         """)
