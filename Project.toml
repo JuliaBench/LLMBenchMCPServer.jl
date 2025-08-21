@@ -1,7 +1,7 @@
 name = "LLMBenchMCPServer"
 uuid = "78754875-2f68-464a-ac60-858ac662827f"
-version = "0.1.0"
 authors = ["JuliaComputing"]
+version = "0.1.0"
 
 [deps]
 ClaudeMCPTools = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
@@ -9,9 +9,16 @@ Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 LLMBenchSimple = "a7b3c4d5-e6f7-8901-2345-678901234567"
 
-[sources]
-ClaudeMCPTools = {rev = "master", url = "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"}
-LLMBenchSimple = {rev = "master", url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"}
+[sources.ClaudeMCPTools]
+rev = "master"
+url = "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"
+
+[sources.LLMBenchSimple]
+rev = "master"
+url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
+
+[compat]
+JSON = "0.21"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
