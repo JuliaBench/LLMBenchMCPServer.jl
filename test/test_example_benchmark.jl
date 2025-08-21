@@ -10,7 +10,7 @@
         
         export setup_problem, grade
         
-        function setup_problem(workdir::String)
+        function setup_problem(workdir::String, problem_id::String="")
             # Create a problem file
             problem_file = joinpath(workdir, "problem.txt")
             write(problem_file, "What is 3 + 5?")
@@ -25,7 +25,7 @@
             \"\"\"
         end
         
-        function grade(workdir::String, transcript::String)
+        function grade(workdir::String, transcript::String, problem_id::String="")
             answer_file = joinpath(workdir, "answer.txt")
             
             if !isfile(answer_file)

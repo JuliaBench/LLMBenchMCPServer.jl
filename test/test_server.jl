@@ -14,8 +14,8 @@
     end
     
     @testset "Server with custom functions" begin
-        setup_fn = (workdir) -> "Test problem"
-        grade_fn = (workdir, transcript) -> 0.5
+        setup_fn = (workdir, problem_id="") -> "Test problem"
+        grade_fn = (workdir, transcript, problem_id="") -> 0.5
         
         server = LLMBenchMCPServer.LLMBenchServer(
             setup_fn=setup_fn,
@@ -40,8 +40,8 @@
     end
     
     @testset "Server integration test" begin
-        setup_fn = (workdir) -> "Solve 2 + 2"
-        grade_fn = function(workdir, transcript)
+        setup_fn = (workdir, problem_id="") -> "Solve 2 + 2"
+        grade_fn = function(workdir, transcript, problem_id="")
             if occursin("4", transcript)
                 return Dict("score" => 1.0)
             else
@@ -95,12 +95,12 @@
             test_file = joinpath(tmpdir, "data.txt")
             write(test_file, "42")
             
-            setup_fn = function(workdir)
+            setup_fn = function(workdir, problem_id="")
                 data = read(joinpath(workdir, "data.txt"), String)
                 return "Find the value: $data"
             end
             
-            grade_fn = function(workdir, transcript)
+            grade_fn = function(workdir, transcript, problem_id="")
                 expected = read(joinpath(workdir, "data.txt"), String)
                 if occursin(expected, transcript)
                     return 1.0
