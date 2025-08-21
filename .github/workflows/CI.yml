@@ -59,8 +59,8 @@ jobs:
           chmod 600 ~/.ssh/config
           
           # Configure git to use the appropriate hosts
-          git config --global url."git@github-claudemcp:JuliaComputing/ClaudeMCPTools.jl.git".insteadOf "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"
-          git config --global url."git@github-llmbench:JuliaComputing/LLMBenchSimple.jl.git".insteadOf "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
+          git config --global url."git@github-claudemcp:JuliaComputing/ClaudeMCPTools.jl".insteadOf "git@github.com:JuliaComputing/ClaudeMCPTools.jl"
+          git config --global url."git@github-llmbench:JuliaComputing/LLMBenchSimple.jl".insteadOf "git@github.com:JuliaComputing/LLMBenchSimple.jl"
       - uses: julia-actions/julia-buildpkg@v1
         with:
           git_cli: true
