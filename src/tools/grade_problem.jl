@@ -92,6 +92,11 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         
         has_test_failures = has_failures(ts)
         
+        # Print test errors to stdout so they appear in the UI
+        if has_test_failures
+            Test.print_test_errors(ts)
+        end
+        
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
         
