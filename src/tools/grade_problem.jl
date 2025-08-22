@@ -53,10 +53,13 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         # Push testset to capture test results (Test module won't print when inside a testset)
         Test.push_testset(ts)
         try
+            # Use LLMBENCH_WORKSPACE if set, otherwise use working_dir
+            workspace = get(ENV, "LLMBENCH_WORKSPACE", tool.working_dir)
+            
             # Call the grade function with all arguments
             # Use invokelatest to handle world age issues when loading modules dynamically
             # Always pass all three parameters - the function has a default value for problem_id
-            result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
+            result = Base.invokelatest(tool.grade_fn, workspace, transcript, problem_id)
         finally
             Test.pop_testset()
             # Restore TESTSET_PRINT_ENABLE

@@ -32,11 +32,14 @@ function ClaudeMCPTools.execute(tool::SetupProblemTool, params::Dict)
     problem_id = get(params, "problem_id", "")
     
     try
-        # Call the setup function with the working directory and problem_id
+        # Use LLMBENCH_WORKSPACE if set, otherwise use working_dir
+        workspace = get(ENV, "LLMBENCH_WORKSPACE", tool.working_dir)
+        
+        # Call the setup function with the workspace directory and problem_id
         # Use invokelatest to handle world age issues when loading modules dynamically
         # Always pass both parameters if we have a problem_id
         # The function can have a default value for problem_id
-        result = Base.invokelatest(tool.setup_fn, tool.working_dir, problem_id)
+        result = Base.invokelatest(tool.setup_fn, workspace, problem_id)
         
         # The setup function should return a problem description
         # Format it as a proper MCP response
