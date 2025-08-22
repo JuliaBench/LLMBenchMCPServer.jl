@@ -68,15 +68,8 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             # finish throws an error if tests fail, but we still want the output
         end
         
-        # Restore stdout and close the write end
-        redirect_stdout(old_stdout)
-        close(wr)
-        
-        # Read the captured output
-        test_output_str = read(rd, String)
-        close(rd)
-        
-        # Check if any tests failed (including in nested testsets)
+        # Check if any tests failed and print errors (while still redirected)
+        # This ensures the errors are captured in the output
         function has_failures(testset)
             for r in testset.results
                 if isa(r, Test.Fail) || isa(r, Test.Error)
@@ -90,12 +83,20 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             return false
         end
         
-        has_test_failures = has_failures(ts)
-        
-        # Print test errors to stdout so they appear in the UI
-        if has_test_failures
+        if has_failures(ts)
             Test.print_test_errors(ts)
         end
+        
+        # Restore stdout and close the write end
+        redirect_stdout(old_stdout)
+        close(wr)
+        
+        # Read the captured output
+        test_output_str = read(rd, String)
+        close(rd)
+        
+        # Check if any tests failed (reuse the has_failures function defined above)
+        has_test_failures = has_failures(ts)
         
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
