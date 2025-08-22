@@ -2,7 +2,7 @@
 Grade Problem Tool for LLM Benchmark
 """
 
-import Test: DefaultTestSet, finish
+import Test: DefaultTestSet
 
 mutable struct GradeProblemTool <: ClaudeMCPTools.MCPTool
     grade_fn::Function
@@ -57,52 +57,62 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             Test.pop_testset()
         end
         
-        # Format testset results
-        test_summary = Dict{String,Any}(
-            "description" => ts.description,
-            "passed" => ts.n_passed,
-            "failed" => count(r -> isa(r, Test.Fail), ts.results),
-            "errored" => count(r -> isa(r, Test.Error), ts.results),
-            "broken" => count(r -> isa(r, Test.Broken), ts.results),
-            "total" => ts.n_passed + length(ts.results)
-        )
+        # Format the testset output as a string similar to how Test module would display it
+        test_output = IOBuffer()
         
-        # Collect details about failures
-        failures = []
-        for r in ts.results
-            if isa(r, Test.Fail)
-                push!(failures, Dict(
-                    "type" => "fail",
-                    "expression" => string(r.orig_expr),
-                    "message" => r.data !== nothing ? string(r.data) : ""
-                ))
-            elseif isa(r, Test.Error)
-                push!(failures, Dict(
-                    "type" => "error",
-                    "expression" => string(r.orig_expr),
-                    "message" => string(r.value)
-                ))
-            elseif isa(r, DefaultTestSet)
+        # Write the summary line
+        n_pass = ts.n_passed
+        n_fail = count(r -> isa(r, Test.Fail), ts.results)
+        n_error = count(r -> isa(r, Test.Error), ts.results) 
+        n_broken = count(r -> isa(r, Test.Broken), ts.results)
+        n_total = n_pass + n_fail + n_error + n_broken
+        
+        println(test_output, "Test Summary: | Pass  Fail  Error  Broken  Total")
+        println(test_output, "$(ts.description) | $(n_pass)  $(n_fail)  $(n_error)  $(n_broken)  $(n_total)")
+        
+        # Add details about nested testsets and failures
+        for result in ts.results
+            if isa(result, DefaultTestSet)
                 # Nested testset
-                nested_summary = Dict(
-                    "description" => r.description,
-                    "passed" => r.n_passed,
-                    "failed" => count(x -> isa(x, Test.Fail), r.results),
-                    "errored" => count(x -> isa(x, Test.Error), r.results)
-                )
-                push!(test_summary, "nested" => nested_summary)
+                n_pass_nested = result.n_passed
+                n_fail_nested = count(r -> isa(r, Test.Fail), result.results)
+                n_error_nested = count(r -> isa(r, Test.Error), result.results)
+                println(test_output, "  $(result.description) | $(n_pass_nested)  $(n_fail_nested)  $(n_error_nested)")
+            elseif isa(result, Test.Fail)
+                # Test failure details
+                println(test_output, "\nTest Failed:")
+                println(test_output, "  Expression: $(result.orig_expr)")
+                if result.data !== nothing
+                    println(test_output, "  Evaluated: $(result.data)")
+                end
+            elseif isa(result, Test.Error)
+                # Test error details
+                println(test_output, "\nTest Error:")
+                println(test_output, "  Expression: $(result.orig_expr)")
+                println(test_output, "  Exception: $(result.value)")
             end
         end
         
-        if !isempty(failures)
-            test_summary["failures"] = failures
+        test_output_str = String(take!(test_output))
+        
+        # Check if any tests failed (including in nested testsets)
+        function has_failures(testset)
+            for r in testset.results
+                if isa(r, Test.Fail) || isa(r, Test.Error)
+                    return true
+                elseif isa(r, DefaultTestSet)
+                    if has_failures(r)
+                        return true
+                    end
+                end
+            end
+            return false
         end
+        
+        has_test_failures = has_failures(ts)
         
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
-        
-        # Check if any tests failed
-        has_test_failures = test_summary["failed"] > 0 || test_summary["errored"] > 0
         
         # The grade function should return a grading result
         # It could be a Dict with subscores, weights, and total score
@@ -143,8 +153,8 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 end
             end
             
-            # Add test results to the grading result
-            result["test_results"] = test_summary
+            # Add test output to the grading result
+            result["test_output"] = test_output_str
             
             return Dict(
                 "content" => [Dict(
@@ -162,7 +172,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 "subscores" => Dict("total" => final_score),
                 "weights" => Dict("total" => 1.0),
                 "score" => final_score,
-                "test_results" => test_summary
+                "test_output" => test_output_str
             )
             
             return Dict(
@@ -181,7 +191,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 "weights" => Dict("completion" => 1.0),
                 "score" => 0.0,
                 "details" => string(result),
-                "test_results" => test_summary
+                "test_output" => test_output_str
             )
             
             return Dict(
@@ -202,24 +212,13 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         # Also print to stderr for debugging
         @error "Grade problem failed" exception=(e, catch_backtrace())
         
-        # Create a test summary for the error case
-        error_test_summary = Dict{String,Any}(
-            "description" => isempty(problem_id) ? "grading" : "grading: $problem_id",
-            "passed" => 0,
-            "failed" => 0,
-            "errored" => 1,
-            "broken" => 0,
-            "total" => 1,
-            "error_message" => error_msg
-        )
-        
         # Return a failed grade with error
         grading_result = Dict(
             "subscores" => Dict("completion" => 0.0),
             "weights" => Dict("completion" => 1.0),
             "score" => 0.0,
             "error" => error_msg,
-            "test_results" => error_test_summary
+            "test_output" => "Test execution failed: grading function threw an exception"
         )
         
         return Dict(
