@@ -2,7 +2,7 @@
 Grade Problem Tool for LLM Benchmark
 """
 
-import Test: DefaultTestSet
+import Test: DefaultTestSet, finish
 
 mutable struct GradeProblemTool <: ClaudeMCPTools.MCPTool
     grade_fn::Function
@@ -57,43 +57,24 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             Test.pop_testset()
         end
         
-        # Format the testset output as a string similar to how Test module would display it
-        test_output = IOBuffer()
+        # Capture the testset output using redirect_stdout
+        # Create a Pipe for capturing stdout
+        old_stdout = stdout
+        rd, wr = redirect_stdout()
         
-        # Write the summary line
-        n_pass = ts.n_passed
-        n_fail = count(r -> isa(r, Test.Fail), ts.results)
-        n_error = count(r -> isa(r, Test.Error), ts.results) 
-        n_broken = count(r -> isa(r, Test.Broken), ts.results)
-        n_total = n_pass + n_fail + n_error + n_broken
-        
-        println(test_output, "Test Summary: | Pass  Fail  Error  Broken  Total")
-        println(test_output, "$(ts.description) | $(n_pass)  $(n_fail)  $(n_error)  $(n_broken)  $(n_total)")
-        
-        # Add details about nested testsets and failures
-        for result in ts.results
-            if isa(result, DefaultTestSet)
-                # Nested testset
-                n_pass_nested = result.n_passed
-                n_fail_nested = count(r -> isa(r, Test.Fail), result.results)
-                n_error_nested = count(r -> isa(r, Test.Error), result.results)
-                println(test_output, "  $(result.description) | $(n_pass_nested)  $(n_fail_nested)  $(n_error_nested)")
-            elseif isa(result, Test.Fail)
-                # Test failure details
-                println(test_output, "\nTest Failed:")
-                println(test_output, "  Expression: $(result.orig_expr)")
-                if result.data !== nothing
-                    println(test_output, "  Evaluated: $(result.data)")
-                end
-            elseif isa(result, Test.Error)
-                # Test error details
-                println(test_output, "\nTest Error:")
-                println(test_output, "  Expression: $(result.orig_expr)")
-                println(test_output, "  Exception: $(result.value)")
-            end
+        try
+            Test.finish(ts)
+        catch e
+            # finish throws an error if tests fail, but we still want the output
         end
         
-        test_output_str = String(take!(test_output))
+        # Restore stdout and close the write end
+        redirect_stdout(old_stdout)
+        close(wr)
+        
+        # Read the captured output
+        test_output_str = read(rd, String)
+        close(rd)
         
         # Check if any tests failed (including in nested testsets)
         function has_failures(testset)
