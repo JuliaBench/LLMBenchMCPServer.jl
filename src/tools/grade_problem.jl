@@ -46,17 +46,16 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         # Variable to store the grading result
         result = nothing
         
-        # Capture output using devnull to suppress test output
+        # Push testset to capture test results (Test module won't print when inside a testset)
         Test.push_testset(ts)
-        redirect_stdout(devnull) do
-            redirect_stderr(devnull) do
-                # Call the grade function with all arguments
-                # Use invokelatest to handle world age issues when loading modules dynamically
-                # Always pass all three parameters - the function has a default value for problem_id
-                result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
-            end
+        try
+            # Call the grade function with all arguments
+            # Use invokelatest to handle world age issues when loading modules dynamically
+            # Always pass all three parameters - the function has a default value for problem_id
+            result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
+        finally
+            Test.pop_testset()
         end
-        Test.pop_testset()
         
         # Format testset results
         test_summary = Dict{String,Any}(
