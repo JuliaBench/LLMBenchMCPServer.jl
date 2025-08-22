@@ -101,6 +101,9 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
         
+        # Check if any tests failed
+        has_test_failures = test_summary["failed"] > 0 || test_summary["errored"] > 0
+        
         # The grade function should return a grading result
         # It could be a Dict with subscores, weights, and total score
         if isa(result, Dict)
@@ -131,6 +134,15 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 result["score"] = total
             end
             
+            # Override score to 0 if any tests failed
+            if has_test_failures
+                result["score"] = 0.0
+                # Also set all subscores to 0
+                for key in keys(result["subscores"])
+                    result["subscores"][key] = 0.0
+                end
+            end
+            
             # Add test results to the grading result
             result["test_results"] = test_summary
             
@@ -144,10 +156,12 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             
         elseif isa(result, Number)
             # Simple numeric score
+            # Override to 0 if any tests failed
+            final_score = has_test_failures ? 0.0 : Float64(result)
             grading_result = Dict(
-                "subscores" => Dict("total" => Float64(result)),
+                "subscores" => Dict("total" => final_score),
                 "weights" => Dict("total" => 1.0),
-                "score" => Float64(result),
+                "score" => final_score,
                 "test_results" => test_summary
             )
             
@@ -161,6 +175,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             
         else
             # Convert to string and return as details
+            # Score is always 0 for non-numeric results or if tests failed
             grading_result = Dict(
                 "subscores" => Dict("completion" => 0.0),
                 "weights" => Dict("completion" => 1.0),
