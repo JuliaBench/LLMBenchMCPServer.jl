@@ -46,6 +46,10 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
         # Variable to store the grading result
         result = nothing
         
+        # Save and disable TESTSET_PRINT_ENABLE to prevent duplicate output
+        old_print_enable = Test.TESTSET_PRINT_ENABLE[]
+        Test.TESTSET_PRINT_ENABLE[] = false
+        
         # Push testset to capture test results (Test module won't print when inside a testset)
         Test.push_testset(ts)
         try
@@ -55,6 +59,8 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
         finally
             Test.pop_testset()
+            # Restore TESTSET_PRINT_ENABLE
+            Test.TESTSET_PRINT_ENABLE[] = old_print_enable
         end
         
         # Capture the testset output using redirect_stdout
