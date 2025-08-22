@@ -4,6 +4,7 @@ using ClaudeMCPTools
 using JSON
 using Dates
 using Sockets
+using Test
 
 export LLMBenchServer, SetupProblemTool, GradeProblemTool
 export main
