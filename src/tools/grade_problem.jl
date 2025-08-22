@@ -140,8 +140,11 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 end
             end
             
-            # Add test output to the grading result
-            result["test_output"] = test_output_str
+            # Add test output to metadata
+            if !haskey(result, "metadata")
+                result["metadata"] = Dict{String,Any}()
+            end
+            result["metadata"]["test_output"] = test_output_str
             
             return Dict(
                 "content" => [Dict(
@@ -159,7 +162,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 "subscores" => Dict("total" => final_score),
                 "weights" => Dict("total" => 1.0),
                 "score" => final_score,
-                "test_output" => test_output_str
+                "metadata" => Dict("test_output" => test_output_str)
             )
             
             return Dict(
@@ -178,7 +181,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 "weights" => Dict("completion" => 1.0),
                 "score" => 0.0,
                 "details" => string(result),
-                "test_output" => test_output_str
+                "metadata" => Dict("test_output" => test_output_str)
             )
             
             return Dict(
@@ -205,7 +208,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             "weights" => Dict("completion" => 1.0),
             "score" => 0.0,
             "error" => error_msg,
-            "test_output" => "Test execution failed: grading function threw an exception"
+            "metadata" => Dict("test_output" => "Test execution failed: grading function threw an exception")
         )
         
         return Dict(
