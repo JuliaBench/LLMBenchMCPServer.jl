@@ -2,8 +2,6 @@
 Grade Problem Tool for LLM Benchmark
 """
 
-import Test: DefaultTestSet, finish
-
 mutable struct GradeProblemTool <: ClaudeMCPTools.MCPTool
     grade_fn::Function
     working_dir::String
@@ -39,73 +37,13 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
     transcript = get(params, "transcript", "")
     
     try
-        # Create a custom testset for grading
-        testset_name = isempty(problem_id) ? "grading" : "grading: $problem_id"
-        ts = DefaultTestSet(testset_name; verbose=false)
+        # Use LLMBENCH_WORKSPACE if set, otherwise use working_dir
+        workspace = get(ENV, "LLMBENCH_WORKSPACE", tool.working_dir)
         
-        # Variable to store the grading result
-        result = nothing
-        
-        # Save and disable TESTSET_PRINT_ENABLE to prevent duplicate output
-        old_print_enable = Test.TESTSET_PRINT_ENABLE[]
-        Test.TESTSET_PRINT_ENABLE[] = false
-        
-        # Push testset to capture test results (Test module won't print when inside a testset)
-        Test.push_testset(ts)
-        try
-            # Use LLMBENCH_WORKSPACE if set, otherwise use working_dir
-            workspace = get(ENV, "LLMBENCH_WORKSPACE", tool.working_dir)
-            
-            # Call the grade function with all arguments
-            # Use invokelatest to handle world age issues when loading modules dynamically
-            # Always pass all three parameters - the function has a default value for problem_id
-            result = Base.invokelatest(tool.grade_fn, workspace, transcript, problem_id)
-        finally
-            Test.pop_testset()
-            # Restore TESTSET_PRINT_ENABLE
-            Test.TESTSET_PRINT_ENABLE[] = old_print_enable
-        end
-        
-        # Capture the testset output using redirect_stdout
-        # Create a Pipe for capturing stdout
-        old_stdout = stdout
-        rd, wr = redirect_stdout()
-        
-        try
-            Test.finish(ts)
-        catch e
-            # finish throws an error if tests fail, but we still want the output
-        end
-        
-        # Check if any tests failed and print errors (while still redirected)
-        # This ensures the errors are captured in the output
-        function has_failures(testset)
-            for r in testset.results
-                if isa(r, Test.Fail) || isa(r, Test.Error)
-                    return true
-                elseif isa(r, DefaultTestSet)
-                    if has_failures(r)
-                        return true
-                    end
-                end
-            end
-            return false
-        end
-        
-        if has_failures(ts)
-            Test.print_test_errors(ts)
-        end
-        
-        # Restore stdout and close the write end
-        redirect_stdout(old_stdout)
-        close(wr)
-        
-        # Read the captured output
-        test_output_str = read(rd, String)
-        close(rd)
-        
-        # Check if any tests failed (reuse the has_failures function defined above)
-        has_test_failures = has_failures(ts)
+        # Call the grade function with all arguments
+        # Use invokelatest to handle world age issues when loading modules dynamically
+        # Always pass all three parameters - the function has a default value for problem_id
+        result = Base.invokelatest(tool.grade_fn, workspace, transcript, problem_id)
         
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
@@ -140,21 +78,6 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
                 result["score"] = total
             end
             
-            # Override score to 0 if any tests failed
-            if has_test_failures
-                result["score"] = 0.0
-                # Also set all subscores to 0
-                for key in keys(result["subscores"])
-                    result["subscores"][key] = 0.0
-                end
-            end
-            
-            # Add test output to metadata
-            if !haskey(result, "metadata")
-                result["metadata"] = Dict{String,Any}()
-            end
-            result["metadata"]["test_output"] = test_output_str
-            
             return Dict(
                 "content" => [Dict(
                     "type" => "text",
@@ -165,13 +88,11 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             
         elseif isa(result, Number)
             # Simple numeric score
-            # Override to 0 if any tests failed
-            final_score = has_test_failures ? 0.0 : Float64(result)
+            final_score = Float64(result)
             grading_result = Dict(
                 "subscores" => Dict("total" => final_score),
                 "weights" => Dict("total" => 1.0),
-                "score" => final_score,
-                "metadata" => Dict("test_output" => test_output_str)
+                "score" => final_score
             )
             
             return Dict(
@@ -184,13 +105,12 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             
         else
             # Convert to string and return as details
-            # Score is always 0 for non-numeric results or if tests failed
+            # Score is 0 for non-numeric/non-dict results
             grading_result = Dict(
                 "subscores" => Dict("completion" => 0.0),
                 "weights" => Dict("completion" => 1.0),
                 "score" => 0.0,
-                "details" => string(result),
-                "metadata" => Dict("test_output" => test_output_str)
+                "details" => string(result)
             )
             
             return Dict(
@@ -216,8 +136,7 @@ function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
             "subscores" => Dict("completion" => 0.0),
             "weights" => Dict("completion" => 1.0),
             "score" => 0.0,
-            "error" => error_msg,
-            "metadata" => Dict("test_output" => "Test execution failed: grading function threw an exception")
+            "error" => error_msg
         )
         
         return Dict(
