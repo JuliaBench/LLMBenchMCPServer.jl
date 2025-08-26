@@ -252,7 +252,7 @@ end
 
 # Main entry point for the LLMBenchMCPServer.
 # Usage: julia --project -m LLMBenchMCPServer ModuleName [--workdir /path]
-function @main(args)
+function (@main)(args)
     # Handle both array and varargs inputs
     if isa(args, Tuple)
         args = collect(args)
