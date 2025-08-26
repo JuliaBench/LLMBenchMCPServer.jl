@@ -3,6 +3,9 @@ LLM Benchmark MCP Server implementation
 """
 
 # Load Revise once per process using OncePerProcess
+if VERSION < v"1.12"
+const load_revise = (args...,)->error("Only supported on 1.12")
+else
 const load_revise = Base.OncePerProcess{Union{Module,Nothing}}() do
     try
         # Use PkgId to load Revise
@@ -12,6 +15,7 @@ const load_revise = Base.OncePerProcess{Union{Module,Nothing}}() do
         @warn "Failed to load Revise package" exception=e
         return nothing
     end
+end
 end
 
 """
