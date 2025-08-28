@@ -223,14 +223,20 @@ function LLMBenchServer(;
     setup_fn::Union{Function, Nothing}=nothing,
     grade_fn::Union{Function, Nothing}=nothing,
     working_dir::String=pwd(),
-    include_basic_tools::Bool=true
+    include_basic_tools::Bool=true,
+    bash_uid::Union{Int, Nothing}=nothing,
+    bash_env::Dict{String,String}=Dict{String,String}()
 )
     # Create base MCP server
     server = ClaudeMCPTools.MCPServer(name=name, version=version)
 
     # Add basic tools if requested
     if include_basic_tools
-        ClaudeMCPTools.register_tool!(server, "bash", ClaudeMCPTools.BashTool(working_dir=working_dir))
+        ClaudeMCPTools.register_tool!(server, "bash", ClaudeMCPTools.BashTool(
+            working_dir=working_dir,
+            uid=bash_uid,
+            env=bash_env
+        ))
         ClaudeMCPTools.register_tool!(server, "str_replace_editor",
             ClaudeMCPTools.StrReplaceEditorTool(base_path=working_dir))
     end
@@ -275,6 +281,8 @@ function (@main)(args)
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
             --direct            Run directly without sandboxing (default: run in sandbox)
+            --bash-uid UID      Set UID for bash session execution (e.g., 1000)
+            --bash-env KEY=VAL  Set environment variables for bash (can be used multiple times)
             --help, -h          Show this help message
 
         The specified module should export:
@@ -288,6 +296,8 @@ function (@main)(args)
             julia --project -m LLMBenchMCPServer MyBenchmark
             julia --project -m LLMBenchMCPServer MyBenchmark --socket
             julia --project -m LLMBenchMCPServer MyBenchmark --direct  # Run without sandbox
+            julia --project -m LLMBenchMCPServer MyBenchmark --bash-uid 1000
+            julia --project -m LLMBenchMCPServer MyBenchmark --bash-env PATH=/custom/path --bash-env FOO=bar
         """)
         return 0
     end
@@ -301,6 +311,8 @@ function (@main)(args)
     include_basic_tools = true
     verbose = false
     direct_mode = false  # New flag for direct execution
+    bash_uid = nothing  # UID for bash session execution
+    bash_env = Dict{String,String}()  # Environment variables for bash
 
     i = 2
     while i <= length(args)
@@ -326,6 +338,23 @@ function (@main)(args)
         elseif args[i] == "--direct"
             direct_mode = true
             i += 1
+        elseif args[i] == "--bash-uid" && i + 1 <= length(args)
+            try
+                bash_uid = parse(Int, args[i + 1])
+            catch
+                println("Warning: Invalid UID value: $(args[i + 1])")
+            end
+            i += 2
+        elseif args[i] == "--bash-env" && i + 1 <= length(args)
+            # Parse KEY=VALUE format
+            env_arg = args[i + 1]
+            if contains(env_arg, "=")
+                key, value = split(env_arg, "=", limit=2)
+                bash_env[String(key)] = String(value)
+            else
+                println("Warning: Invalid --bash-env format: $(env_arg) (expected KEY=VALUE)")
+            end
+            i += 2
         else
             println("Warning: Unknown option: $(args[i])")
             i += 1
@@ -400,6 +429,20 @@ function (@main)(args)
             throw(ArgumentError("Could not load module $module_name"))
         end
 
+        # Set environment variables for benchmark access
+        # Set workspace directory
+        ENV["LLMBENCH_WORKSPACE"] = working_dir
+        
+        # Set bash UID if specified
+        if bash_uid !== nothing
+            ENV["LLMBENCH_BASH_UID"] = string(bash_uid)
+        end
+        
+        # Set bash environment variables with a prefix
+        for (key, value) in bash_env
+            ENV["LLMBENCH_BASH_ENV_$key"] = value
+        end
+        
         # Extract functions
         setup_fn = nothing
         grade_fn = nothing
@@ -429,12 +472,20 @@ function (@main)(args)
             setup_fn=setup_fn,
             grade_fn=grade_fn,
             working_dir=working_dir,
-            include_basic_tools=include_basic_tools
+            include_basic_tools=include_basic_tools,
+            bash_uid=bash_uid,
+            bash_env=bash_env
         )
 
         if verbose
             println("Starting MCP server for $module_name")
             println("Working directory: $working_dir")
+            if bash_uid !== nothing
+                println("Bash UID: $bash_uid")
+            end
+            if !isempty(bash_env)
+                println("Bash environment variables: $bash_env")
+            end
             println("Tools registered: $(keys(server.tools))")
         end
 
