@@ -238,7 +238,7 @@ function LLMBenchServer(;
             env=bash_env
         ))
         ClaudeMCPTools.register_tool!(server, "str_replace_editor",
-            ClaudeMCPTools.StrReplaceEditorTool(base_path=working_dir))
+            ClaudeMCPTools.StrReplaceEditorTool(base_path=working_dir, uid=bash_uid))
     end
 
     # Add setup_problem tool if function provided
