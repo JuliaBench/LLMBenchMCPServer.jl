@@ -257,7 +257,7 @@ function LLMBenchServer(;
 end
 
 # Main entry point for the LLMBenchMCPServer.
-# Usage: julia --project -m LLMBenchMCPServer ModuleName [--workdir /path]
+# Usage: julia --project -m LLMBenchMCPServer ModuleName [--workspace /path]
 function (@main)(args)
     # Handle both array and varargs inputs
     if isa(args, Tuple)
@@ -274,7 +274,7 @@ function (@main)(args)
             ModuleName          Name of the module containing setup_problem and grade functions
 
         Options:
-            --workdir PATH      Working directory (default: current directory)
+            --workspace PATH      Working directory (default: current directory)
             --socket            Run server on Unix domain socket (creates socket in /tmp)
             --bind-socket PATH  Run server on Unix domain socket at specified path
             --revise            Load Revise.jl and auto-reload code changes
@@ -304,7 +304,7 @@ function (@main)(args)
 
     # Parse arguments
     module_name = args[1]
-    working_dir = pwd()
+    working_dir = get(ENV, "LLMBENCH_WORKSPACE", pwd())
     use_socket = false
     socket_path = ""  # For --bind-socket
     use_revise = false
@@ -316,7 +316,7 @@ function (@main)(args)
 
     i = 2
     while i <= length(args)
-        if args[i] == "--workdir" && i + 1 <= length(args)
+        if args[i] == "--workspace" && i + 1 <= length(args)
             working_dir = args[i + 1]
             i += 2
         elseif args[i] == "--socket"

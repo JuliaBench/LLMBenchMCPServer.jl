@@ -64,7 +64,7 @@ julia --project -e 'using LLMBenchMCPServer; LLMBenchMCPServer.main()' -- MyBenc
 ```
 
 Options:
-- `--workdir PATH`: Set the working directory (default: current directory)
+- `--workspace PATH`: Set the working directory (default: current directory)
 - `--socket`: Run server on Unix domain socket (creates unique socket in /tmp)
 - `--no-basic-tools`: Disable basic tools (bash, str_replace_editor)
 - `--verbose`: Enable verbose output
