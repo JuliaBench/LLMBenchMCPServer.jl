@@ -422,8 +422,8 @@ function (@main)(args)
                     return "Error: Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id"
                 end
                 
-                mod_name = parts[1]
-                clean_problem_id = parts[2]
+                mod_name = String(parts[1])
+                clean_problem_id = String(parts[2])
                 
                 # Try to load the module
                 try
@@ -463,8 +463,8 @@ function (@main)(args)
                     )
                 end
                 
-                mod_name = parts[1]
-                clean_problem_id = parts[2]
+                mod_name = String(parts[1])
+                clean_problem_id = String(parts[2])
                 
                 # Try to load the module
                 try
