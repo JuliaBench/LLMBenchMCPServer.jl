@@ -272,6 +272,7 @@ function (@main)(args)
 
         Arguments:
             ModuleName          Name of the module containing setup_problem and grade functions
+                               Use "auto" to auto-detect module from problem_id prefix
 
         Options:
             --workspace PATH      Working directory (default: current directory)
@@ -294,6 +295,7 @@ function (@main)(args)
 
         Examples:
             julia --project -m LLMBenchMCPServer MyBenchmark
+            julia --project -m LLMBenchMCPServer auto  # Auto-detect module from problem_id
             julia --project -m LLMBenchMCPServer MyBenchmark --socket
             julia --project -m LLMBenchMCPServer MyBenchmark --direct  # Run without sandbox
             julia --project -m LLMBenchMCPServer MyBenchmark --bash-uid 1000
@@ -313,6 +315,7 @@ function (@main)(args)
     direct_mode = false  # New flag for direct execution
     bash_uid = nothing  # UID for bash session execution
     bash_env = Dict{String,String}()  # Environment variables for bash
+    auto_mode = (module_name == "auto")  # Check if we're in auto-detect mode
 
     i = 2
     while i <= length(args)
@@ -395,40 +398,156 @@ function (@main)(args)
         mkpath(working_dir)
     end
 
-    # Load the module
+    # Handle module loading based on mode
     try
-        # Try to load as a module first, then as a file
         mod = nothing
-        mod_symbol = Symbol(module_name)
+        setup_fn = nothing
+        grade_fn = nothing
         
-        # First try to load as a registered package/module
-        try
-            mod = Base.require(Main, mod_symbol)
-        catch
-            # If that fails, try to load as a local file
-            if endswith(module_name, ".jl")
-                # Load file directly
-                Base.include(Main, module_name)
-                # Extract module name from file
-                file_mod_name = basename(module_name)[1:end-3]  # Remove .jl
-                mod_symbol = Symbol(file_mod_name)
-                if isdefined(Main, mod_symbol)
-                    mod = getfield(Main, mod_symbol)
+        if auto_mode
+            # In auto mode, create wrapper functions that dynamically load modules
+            if verbose
+                println("Auto mode enabled - modules will be loaded based on problem_id prefix")
+            end
+            
+            # Create a wrapper function for setup_problem that auto-detects the module
+            function auto_setup_problem(workdir::String, problem_id::String="")
+                if isempty(problem_id)
+                    return "Error: problem_id is required in auto mode. Format: ModuleName-problem_id"
                 end
-            elseif isfile(module_name * ".jl")
-                # Try adding .jl extension
-                Base.include(Main, module_name * ".jl")
-                mod_symbol = Symbol(module_name)
-                if isdefined(Main, mod_symbol)
-                    mod = getfield(Main, mod_symbol)
+                
+                # Extract module name from problem_id
+                parts = split(problem_id, "-", limit=2)
+                if length(parts) < 2
+                    return "Error: Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id"
                 end
+                
+                mod_name = parts[1]
+                clean_problem_id = parts[2]
+                
+                # Try to load the module
+                try
+                    mod_symbol = Symbol(mod_name)
+                    target_mod = Base.require(Main, mod_symbol)
+                    
+                    # Check if the module has setup_problem
+                    if !isdefined(target_mod, :setup_problem)
+                        return "Error: Module $mod_name does not export setup_problem function"
+                    end
+                    
+                    # Call the module's setup_problem with the clean problem_id
+                    setup_fn = getfield(target_mod, :setup_problem)
+                    return Base.invokelatest(setup_fn, workdir, clean_problem_id)
+                catch e
+                    io = IOBuffer()
+                    showerror(io, e, catch_backtrace())
+                    return "Error loading module $mod_name: " * String(take!(io))
+                end
+            end
+            
+            # Create a wrapper function for grade that auto-detects the module
+            function auto_grade(workdir::String, transcript::String, problem_id::String="")
+                if isempty(problem_id)
+                    return Dict(
+                        "score" => 0.0,
+                        "metadata" => Dict("error" => "Error: problem_id is required in auto mode. Format: ModuleName-problem_id")
+                    )
+                end
+                
+                # Extract module name from problem_id
+                parts = split(problem_id, "-", limit=2)
+                if length(parts) < 2
+                    return Dict(
+                        "score" => 0.0,
+                        "metadata" => Dict("error" => "Error: Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id")
+                    )
+                end
+                
+                mod_name = parts[1]
+                clean_problem_id = parts[2]
+                
+                # Try to load the module
+                try
+                    mod_symbol = Symbol(mod_name)
+                    target_mod = Base.require(Main, mod_symbol)
+                    
+                    # Check if the module has grade
+                    if !isdefined(target_mod, :grade)
+                        return Dict(
+                            "score" => 0.0,
+                            "metadata" => Dict("error" => "Error: Module $mod_name does not export grade function")
+                        )
+                    end
+                    
+                    # Call the module's grade with the clean problem_id
+                    grade_fn = getfield(target_mod, :grade)
+                    return Base.invokelatest(grade_fn, workdir, transcript, clean_problem_id)
+                catch e
+                    io = IOBuffer()
+                    showerror(io, e, catch_backtrace())
+                    return Dict(
+                        "score" => 0.0,
+                        "metadata" => Dict("error" => "Error loading module $mod_name: " * String(take!(io)))
+                    )
+                end
+            end
+            
+            # Set the wrapper functions
+            setup_fn = auto_setup_problem
+            grade_fn = auto_grade
+            
+        else
+            # Normal mode - load the specified module
+            mod_symbol = Symbol(module_name)
+            
+            # First try to load as a registered package/module
+            try
+                mod = Base.require(Main, mod_symbol)
+            catch
+                # If that fails, try to load as a local file
+                if endswith(module_name, ".jl")
+                    # Load file directly
+                    Base.include(Main, module_name)
+                    # Extract module name from file
+                    file_mod_name = basename(module_name)[1:end-3]  # Remove .jl
+                    mod_symbol = Symbol(file_mod_name)
+                    if isdefined(Main, mod_symbol)
+                        mod = getfield(Main, mod_symbol)
+                    end
+                elseif isfile(module_name * ".jl")
+                    # Try adding .jl extension
+                    Base.include(Main, module_name * ".jl")
+                    mod_symbol = Symbol(module_name)
+                    if isdefined(Main, mod_symbol)
+                        mod = getfield(Main, mod_symbol)
+                    end
+                end
+            end
+            
+            if mod === nothing
+                throw(ArgumentError("Could not load module $module_name"))
+            end
+            
+            # Extract functions from the loaded module
+            if isdefined(mod, :setup_problem)
+                setup_fn = getfield(mod, :setup_problem)
+                if verbose
+                    println("Found setup_problem function in $module_name")
+                end
+            else
+                println("Warning: No setup_problem function found in $module_name")
+            end
+
+            if isdefined(mod, :grade)
+                grade_fn = getfield(mod, :grade)
+                if verbose
+                    println("Found grade function in $module_name")
+                end
+            else
+                println("Warning: No grade function found in $module_name")
             end
         end
         
-        if mod === nothing
-            throw(ArgumentError("Could not load module $module_name"))
-        end
-
         # Set environment variables for benchmark access
         # Set workspace directory
         ENV["LLMBENCH_WORKSPACE"] = working_dir
@@ -441,28 +560,6 @@ function (@main)(args)
         # Set bash environment variables with a prefix
         for (key, value) in bash_env
             ENV["LLMBENCH_BASH_ENV_$key"] = value
-        end
-        
-        # Extract functions
-        setup_fn = nothing
-        grade_fn = nothing
-
-        if isdefined(mod, :setup_problem)
-            setup_fn = getfield(mod, :setup_problem)
-            if verbose
-                println("Found setup_problem function in $module_name")
-            end
-        else
-            println("Warning: No setup_problem function found in $module_name")
-        end
-
-        if isdefined(mod, :grade)
-            grade_fn = getfield(mod, :grade)
-            if verbose
-                println("Found grade function in $module_name")
-            end
-        else
-            println("Warning: No grade function found in $module_name")
         end
 
         # Create and run the server
