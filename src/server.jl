@@ -19,6 +19,88 @@ end
 end
 
 """
+Handle a single client connection.
+"""
+function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
+                                 verbose::Bool=false, use_revise::Bool=false,
+                                 connection_info::String="")
+    try
+        while isopen(client)
+            # Read a line (JSON-RPC message)
+            line = readline(client)
+            if isempty(line)
+                break
+            end
+
+            # Call Revise before processing if requested
+            if use_revise
+                revise_mod = load_revise()
+                if revise_mod !== nothing
+                    try
+                        Base.invokelatest(revise_mod.revise)
+                        if verbose
+                            @debug "Revise.revise() called before processing request"
+                        end
+                    catch e
+                        if verbose
+                            @warn "Revise.revise() failed" exception=e
+                        end
+                    end
+                end
+            end
+
+            # Parse and handle the request
+            request = nothing
+            try
+                request = JSON.parse(line)
+
+                # Check if this is a notification (no id field means it's a notification)
+                is_notification = !haskey(request, "id")
+
+                # Handle notifications - they don't need responses
+                if is_notification
+                    continue
+                end
+
+                # For requests (not notifications), handle normally
+                response = if use_revise
+                    Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
+                else
+                    ClaudeMCPTools.handle_request(server, request)
+                end
+
+                # Send response
+                println(client, JSON.json(response))
+                flush(client)
+            catch e
+                # Only send error response if it's not a notification
+                if request !== nothing && haskey(request, "id")
+                    error_response = Dict(
+                        "jsonrpc" => "2.0",
+                        "error" => Dict(
+                            "code" => -32603,
+                            "message" => "Internal error: $(string(e))"
+                        ),
+                        "id" => request["id"]
+                    )
+                    println(client, JSON.json(error_response))
+                    flush(client)
+                end
+            end
+        end
+    catch e
+        if !(e isa EOFError || e isa Base.IOError)
+            @error "Error handling client" exception=e
+        end
+    finally
+        close(client)
+        if verbose && !isempty(connection_info)
+            @info "Connection closed: $connection_info"
+        end
+    end
+end
+
+"""
 Run the Unix socket server with optional Revise support.
 """
 function run_server_multi_instance(setup_fn::Function, grade_fn::Function,
@@ -68,80 +150,9 @@ function run_server_multi_instance(setup_fn::Function, grade_fn::Function,
             )
 
             # Handle client in async task with its own server instance
-            @async try
-                while isopen(client)
-                    # Read a line (JSON-RPC message)
-                    line = readline(client)
-                    if isempty(line)
-                        break
-                    end
-
-                    # Call Revise before processing if requested
-                    if use_revise
-                        revise_mod = load_revise()
-                        if revise_mod !== nothing
-                            try
-                                Base.invokelatest(revise_mod.revise)
-                                if verbose
-                                    @debug "Revise.revise() called before processing request"
-                                end
-                            catch e
-                                if verbose
-                                    @warn "Revise.revise() failed" exception=e
-                                end
-                            end
-                        end
-                    end
-
-                    # Parse and handle the request
-                    request = nothing
-                    try
-                        request = JSON.parse(line)
-
-                        # Check if this is a notification (no id field means it's a notification)
-                        is_notification = !haskey(request, "id")
-
-                        # Handle notifications - they don't need responses
-                        if is_notification
-                            continue
-                        end
-
-                        # For requests (not notifications), handle normally
-                        response = if use_revise
-                            Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
-                        else
-                            ClaudeMCPTools.handle_request(server, request)
-                        end
-
-                        # Send response
-                        println(client, JSON.json(response))
-                        flush(client)
-                    catch e
-                        # Only send error response if it's not a notification
-                        if request !== nothing && haskey(request, "id")
-                            error_response = Dict(
-                                "jsonrpc" => "2.0",
-                                "error" => Dict(
-                                    "code" => -32603,
-                                    "message" => "Internal error: $(string(e))"
-                                ),
-                                "id" => request["id"]
-                            )
-                            println(client, JSON.json(error_response))
-                            flush(client)
-                        end
-                    end
-                end
-            catch e
-                if !(e isa EOFError || e isa Base.IOError)
-                    @error "Error handling client" exception=e
-                end
-            finally
-                close(client)
-                if verbose
-                    @info "Connection #$conn_id closed, directory: $instance_dir"
-                end
-            end
+            @async handle_client_connection(client, server;
+                verbose=verbose, use_revise=use_revise,
+                connection_info="Connection #$conn_id, directory: $instance_dir")
         end
     finally
         close(socket)
@@ -170,81 +181,9 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
             # Accept connection
             client = Sockets.accept(socket)
             
-            # Handle client in async task
-            @async try
-                while isopen(client)
-                    # Read a line (JSON-RPC message)
-                    line = readline(client)
-                    if isempty(line)
-                        break
-                    end
-                    
-                    # Call Revise before processing if requested
-                    if use_revise
-                        revise_mod = load_revise()
-                        if revise_mod !== nothing
-                            try
-                                # Use invokelatest to handle world age issues
-                                Base.invokelatest(revise_mod.revise)
-                                if verbose
-                                    @debug "Revise.revise() called before processing request"
-                                end
-                            catch e
-                                if verbose
-                                    @warn "Revise.revise() failed" exception=e
-                                end
-                            end
-                        end
-                    end
-                    
-                    # Parse and handle the request
-                    request = nothing
-                    try
-                        request = JSON.parse(line)
-
-                        # Check if this is a notification (no id field means it's a notification)
-                        is_notification = !haskey(request, "id")
-
-                        # Handle notifications - they don't need responses
-                        if is_notification
-                            # Skip to next message - no response needed for any notification
-                            continue
-                        end
-
-                        # For requests (not notifications), handle normally
-                        # Use invokelatest for the handler to ensure we use refreshed code
-                        response = if use_revise
-                            Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
-                        else
-                            ClaudeMCPTools.handle_request(server, request)
-                        end
-
-                        # Send response (we already know it's not a notification at this point)
-                        println(client, JSON.json(response))
-                        flush(client)
-                    catch e
-                        # Only send error response if it's not a notification
-                        if request !== nothing && haskey(request, "id")
-                            error_response = Dict(
-                                "jsonrpc" => "2.0",
-                                "error" => Dict(
-                                    "code" => -32603,
-                                    "message" => "Internal error: $(string(e))"
-                                ),
-                                "id" => get(request, "id", nothing)
-                            )
-                            println(client, JSON.json(error_response))
-                            flush(client)
-                        end
-                    end
-                end
-            catch e
-                if verbose
-                    @error "Client connection error" exception=(e, catch_backtrace())
-                end
-            finally
-                close(client)
-            end
+            # Handle client in async task using the common handler
+            @async handle_client_connection(client, server;
+                verbose=verbose, use_revise=use_revise)
         end
     finally
         close(socket)
