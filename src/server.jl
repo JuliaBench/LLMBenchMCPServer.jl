@@ -71,41 +71,41 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
                     request = nothing
                     try
                         request = JSON.parse(line)
-                        
-                        # Log incoming message to stderr in verbose mode
-                        if verbose
-                            println(stderr, "Incoming message: ", JSON.json(request, 2))
-                            flush(stderr)
+
+                        # Check if this is a notification (no id field means it's a notification)
+                        is_notification = !haskey(request, "id")
+
+                        # Handle notifications - they don't need responses
+                        if is_notification
+                            # Skip to next message - no response needed for any notification
+                            continue
                         end
-                        
+
+                        # For requests (not notifications), handle normally
                         # Use invokelatest for the handler to ensure we use refreshed code
                         response = if use_revise
                             Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
                         else
                             ClaudeMCPTools.handle_request(server, request)
                         end
-                        
-                        # Log outgoing response to stderr in verbose mode
-                        if verbose
-                            println(stderr, "Outgoing response: ", JSON.json(response, 2))
-                            flush(stderr)
-                        end
-                        
-                        # Send response
+
+                        # Send response (we already know it's not a notification at this point)
                         println(client, JSON.json(response))
                         flush(client)
                     catch e
-                        # Send error response
-                        error_response = Dict(
-                            "jsonrpc" => "2.0",
-                            "error" => Dict(
-                                "code" => -32603,
-                                "message" => "Internal error: $(string(e))"
-                            ),
-                            "id" => request !== nothing ? get(request, "id", nothing) : nothing
-                        )
-                        println(client, JSON.json(error_response))
-                        flush(client)
+                        # Only send error response if it's not a notification
+                        if request !== nothing && haskey(request, "id")
+                            error_response = Dict(
+                                "jsonrpc" => "2.0",
+                                "error" => Dict(
+                                    "code" => -32603,
+                                    "message" => "Internal error: $(string(e))"
+                                ),
+                                "id" => get(request, "id", nothing)
+                            )
+                            println(client, JSON.json(error_response))
+                            flush(client)
+                        end
                     end
                 end
             catch e
@@ -234,8 +234,8 @@ function LLMBenchServer(;
     if include_basic_tools
         ClaudeMCPTools.register_tool!(server, "bash", ClaudeMCPTools.BashTool(
             working_dir=working_dir,
-            uid=bash_uid,
-            env=bash_env
+            env=bash_env,
+            uid=bash_uid
         ))
         ClaudeMCPTools.register_tool!(server, "str_replace_editor",
             ClaudeMCPTools.StrReplaceEditorTool(base_path=working_dir, uid=bash_uid))
@@ -600,13 +600,8 @@ function (@main)(args)
             
             # Run server with or without Revise
             try
-                if use_revise
-                    # Use our custom server that calls Revise before each request
-                    run_server_with_revise(server, socket_path, verbose=verbose, use_revise=true)
-                else
-                    # Use the standard ClaudeMCPTools server
-                    ClaudeMCPTools.run_unix_socket_server(server, socket_path, verbose=verbose, cleanup=true)
-                end
+                # Always use our custom server to handle notifications properly
+                run_server_with_revise(server, socket_path, verbose=verbose, use_revise=use_revise)
             finally
                 # Ensure socket is cleaned up even on error
                 if isfile(socket_path)
