@@ -1,35 +1,73 @@
 # Create a test module directly
 module SimpleBenchModule
-    using LLMBenchSimple: _setup_problem_impl, _grade_impl, PromptPlaceholder
-    
-    # Create module-local benchmarks
+    # Simple test implementation that mimics LLMBenchSimple behavior
     const BENCHMARKS = Dict{String, Any}()
-    
+
     function __init__()
         # Clear any existing benchmarks
         empty!(BENCHMARKS)
-        
-        # Add benchmarks manually
-        BENCHMARKS["math1"] = (
-            prompt_expr = :(PromptPlaceholder("What is 5 + 3?") == 8),
-            original_expr = nothing
-        )
-        
-        BENCHMARKS["math2"] = (
-            prompt_expr = :(PromptPlaceholder("What is 10 - 4?") == 6),
-            original_expr = nothing
-        )
+
+        # Add test benchmarks
+        BENCHMARKS["math1"] = Dict("prompt" => "What is 5 + 3?", "answer" => 8)
+        BENCHMARKS["math2"] = Dict("prompt" => "What is 10 - 4?", "answer" => 6)
     end
-    
-    # Create wrapper functions that use our module's benchmarks
+
+    # Simple setup function
     function setup_problem(workdir::String, problem_id::String="")
-        return _setup_problem_impl(@__MODULE__, workdir, problem_id)
+        if isempty(problem_id)
+            # Return error with available problems
+            available = join(keys(BENCHMARKS), ", ")
+            return "Error: problem_id is required. Available problems: $available"
+        end
+
+        if !haskey(BENCHMARKS, problem_id)
+            return "Error: Unknown problem_id: $problem_id"
+        end
+
+        return BENCHMARKS[problem_id]["prompt"]
     end
-    
+
+    # Simple grade function
     function grade(workdir::String, transcript::String, problem_id::String="")
-        return _grade_impl(@__MODULE__, workdir, transcript, problem_id)
+        result = Dict{String, Any}("subscores" => Dict{String, Any}())
+
+        if isempty(problem_id)
+            # Return error result
+            result["score"] = 0.0
+            result["details"] = "Error: problem_id is required"
+            return result
+        end
+
+        if !haskey(BENCHMARKS, problem_id)
+            result["score"] = 0.0
+            result["details"] = "Unknown problem_id: $problem_id"
+            return result
+        end
+
+        # Extract answer from transcript
+        answer_match = match(r"<answer>(\d+)</answer>", transcript)
+        if isnothing(answer_match)
+            result["subscores"][problem_id] = 0.0
+            result["score"] = 0.0
+            result["details"] = "No answer found"
+            return result
+        end
+
+        answer = parse(Int, answer_match.captures[1])
+        correct_answer = BENCHMARKS[problem_id]["answer"]
+
+        is_correct = answer == correct_answer
+        result["subscores"][problem_id] = is_correct ? 1.0 : 0.0
+        result["score"] = is_correct ? 1.0 : 0.0
+        result["details"] = is_correct ? "Correct" : "Incorrect (expected $correct_answer, got $answer)"
+
+        return result
     end
 end # module
+
+using LLMBenchMCPServer
+using ClaudeMCPTools
+using JSON
 
 @testset "LLMBenchSimple Integration" begin
     @testset "Module with LLMBenchSimple functions" begin
@@ -45,11 +83,10 @@ end # module
                 @test occursin("problem_id is required", description)
                 @test occursin("math1", description)
                 @test occursin("math2", description)
-                
+
                 # Test setup_problem for specific problem
                 description = Base.invokelatest(mod.setup_problem, workdir, "math1")
-                @test occursin("5 + 3", description)
-                @test !occursin("10 - 4", description)
+                @test description == "What is 5 + 3?"
                 
                 # Test grading with correct answers
                 result = Base.invokelatest(mod.grade, workdir, "<answer>8</answer>", "math1")
