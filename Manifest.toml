@@ -4,17 +4,26 @@ julia_version = "1.13.0-DEV"
 manifest_format = "2.0"
 project_hash = "4b3c2014fa9be900c59f5ea3b2106ed48a689c6d"
 
+[[deps.Artifacts]]
+uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
+version = "1.11.0"
+
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
 
 [[deps.ClaudeMCPTools]]
 deps = ["JSON", "Sockets"]
-git-tree-sha1 = "6dbc22a1c1add40720d6e66e8c78ea9794393442"
+git-tree-sha1 = "0ab4a48607a098fd22991424a7ff65a527fb2026"
 repo-rev = "master"
 repo-url = "git@github.com:JuliaComputing/ClaudeMCPTools.jl.git"
 uuid = "b9bb1685-6a70-41d7-9793-2f9fb633d966"
 version = "0.1.0"
+
+[[deps.CompilerSupportLibraries_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
+version = "1.3.0+1"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -38,17 +47,37 @@ uuid = "ac6e5ff7-fb65-4e79-a425-ec3bc9c03011"
 version = "1.12.0"
 
 [[deps.LLMBenchMCPServer]]
-deps = ["ClaudeMCPTools", "Dates", "JSON", "LLMBenchSimple", "Sockets"]
+deps = ["ClaudeMCPTools", "Dates", "JSON", "LLMBenchSimple", "Sockets", "Test"]
 path = "."
 uuid = "78754875-2f68-464a-ac60-858ac662827f"
 version = "0.1.0"
 
 [[deps.LLMBenchSimple]]
-git-tree-sha1 = "0c199c4f94db33217d165d42062c0822caeeb17e"
+deps = ["LibGit2", "LibGit2_jll", "Markdown", "Test"]
+git-tree-sha1 = "e49e32c79fea9d25fe4294182f7e906e7c1b9bb9"
 repo-rev = "master"
 repo-url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
 uuid = "a7b3c4d5-e6f7-8901-2345-678901234567"
 version = "0.1.0"
+
+[[deps.LibGit2]]
+deps = ["LibGit2_jll", "NetworkOptions", "Printf", "SHA"]
+uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
+version = "1.11.0"
+
+[[deps.LibGit2_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "LibSSH2_jll", "Libdl", "OpenSSL_jll", "PCRE2_jll", "Zlib_jll"]
+uuid = "e37daf67-58a4-590a-8e99-b0245dd2ffc5"
+version = "1.9.1+0"
+
+[[deps.LibSSH2_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl", "OpenSSL_jll", "Zlib_jll"]
+uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
+version = "1.11.3+1"
+
+[[deps.Libdl]]
+uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+version = "1.11.0"
 
 [[deps.Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -63,6 +92,20 @@ version = "1.11.0"
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 version = "1.11.0"
 
+[[deps.NetworkOptions]]
+uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
+version = "1.3.0"
+
+[[deps.OpenSSL_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
+version = "3.5.2+0"
+
+[[deps.PCRE2_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
+version = "10.46.0+0"
+
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
 git-tree-sha1 = "7d2f8f21da5db6a806faf7b9b292296da42b2810"
@@ -71,9 +114,9 @@ version = "2.8.3"
 
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
-git-tree-sha1 = "516f18f048a195409d6e072acf879a9f017d3900"
+git-tree-sha1 = "07a921781cab75691315adc645096ed5e370cb77"
 uuid = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
-version = "1.3.2"
+version = "1.3.3"
 
 [[deps.Preferences]]
 deps = ["TOML"]
@@ -125,3 +168,8 @@ version = "1.11.0"
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 version = "1.11.0"
+
+[[deps.Zlib_jll]]
+deps = ["Libdl"]
+uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
+version = "1.3.1+2"
