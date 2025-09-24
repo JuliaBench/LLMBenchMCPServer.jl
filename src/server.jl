@@ -21,7 +21,137 @@ end
 """
 Run the Unix socket server with optional Revise support.
 """
-function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::String; 
+function run_server_multi_instance(setup_fn::Function, grade_fn::Function,
+                                  socket_path::String, base_working_dir::String;
+                                  verbose::Bool=false, use_revise::Bool=false,
+                                  include_basic_tools::Bool=true, bash_uid::Union{Int, Nothing}=nothing,
+                                  bash_env::Dict{String,String}=Dict{String,String}())
+    # Clean up existing socket if it exists
+    if isfile(socket_path)
+        rm(socket_path)
+    end
+
+    # Create the Unix socket
+    socket = Sockets.listen(socket_path)
+
+    if verbose
+        @info "MCP server (multi-instance) listening on Unix socket: $socket_path"
+    end
+
+    connection_count = Ref(0)
+
+    try
+        while true
+            # Accept connection
+            client = Sockets.accept(socket)
+            connection_count[] += 1
+            conn_id = connection_count[]
+
+            # Create a unique subdirectory for this connection
+            timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS_sss")
+            instance_dir = joinpath(base_working_dir, "instance_$(timestamp)_$(conn_id)")
+            mkpath(instance_dir)
+
+            if verbose
+                @info "New connection #$conn_id, working directory: $instance_dir"
+            end
+
+            # Create a new server instance for this connection
+            server = LLMBenchServer(
+                name="LLMBenchServer_$(conn_id)",
+                setup_fn=setup_fn,
+                grade_fn=grade_fn,
+                working_dir=instance_dir,
+                include_basic_tools=include_basic_tools,
+                bash_uid=bash_uid,
+                bash_env=bash_env
+            )
+
+            # Handle client in async task with its own server instance
+            @async try
+                while isopen(client)
+                    # Read a line (JSON-RPC message)
+                    line = readline(client)
+                    if isempty(line)
+                        break
+                    end
+
+                    # Call Revise before processing if requested
+                    if use_revise
+                        revise_mod = load_revise()
+                        if revise_mod !== nothing
+                            try
+                                Base.invokelatest(revise_mod.revise)
+                                if verbose
+                                    @debug "Revise.revise() called before processing request"
+                                end
+                            catch e
+                                if verbose
+                                    @warn "Revise.revise() failed" exception=e
+                                end
+                            end
+                        end
+                    end
+
+                    # Parse and handle the request
+                    request = nothing
+                    try
+                        request = JSON.parse(line)
+
+                        # Check if this is a notification (no id field means it's a notification)
+                        is_notification = !haskey(request, "id")
+
+                        # Handle notifications - they don't need responses
+                        if is_notification
+                            continue
+                        end
+
+                        # For requests (not notifications), handle normally
+                        response = if use_revise
+                            Base.invokelatest(ClaudeMCPTools.handle_request, server, request)
+                        else
+                            ClaudeMCPTools.handle_request(server, request)
+                        end
+
+                        # Send response
+                        println(client, JSON.json(response))
+                        flush(client)
+                    catch e
+                        # Only send error response if it's not a notification
+                        if request !== nothing && haskey(request, "id")
+                            error_response = Dict(
+                                "jsonrpc" => "2.0",
+                                "error" => Dict(
+                                    "code" => -32603,
+                                    "message" => "Internal error: $(string(e))"
+                                ),
+                                "id" => request["id"]
+                            )
+                            println(client, JSON.json(error_response))
+                            flush(client)
+                        end
+                    end
+                end
+            catch e
+                if !(e isa EOFError || e isa Base.IOError)
+                    @error "Error handling client" exception=e
+                end
+            finally
+                close(client)
+                if verbose
+                    @info "Connection #$conn_id closed, directory: $instance_dir"
+                end
+            end
+        end
+    finally
+        close(socket)
+        if isfile(socket_path)
+            rm(socket_path)
+        end
+    end
+end
+
+function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::String;
                                 verbose::Bool=false, use_revise::Bool=false)
     # Clean up existing socket if it exists
     if isfile(socket_path)
@@ -281,6 +411,7 @@ function (@main)(args)
             --revise            Load Revise.jl and auto-reload code changes
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
+            --multi             Multi-instance mode: each connection gets a new subdirectory
             --direct            Run directly without sandboxing (default: run in sandbox)
             --bash-uid UID      Set UID for bash session execution (e.g., 1000)
             --bash-env KEY=VAL  Set environment variables for bash (can be used multiple times)
@@ -316,6 +447,7 @@ function (@main)(args)
     bash_uid = nothing  # UID for bash session execution
     bash_env = Dict{String,String}()  # Environment variables for bash
     auto_mode = (module_name == "auto")  # Check if we're in auto-detect mode
+    multi_mode = false  # New flag for multi-instance mode
 
     i = 2
     while i <= length(args)
@@ -358,6 +490,9 @@ function (@main)(args)
                 println("Warning: Invalid --bash-env format: $(env_arg) (expected KEY=VALUE)")
             end
             i += 2
+        elseif args[i] == "--multi"
+            multi_mode = true
+            i += 1
         else
             println("Warning: Unknown option: $(args[i])")
             i += 1
@@ -595,13 +730,21 @@ function (@main)(args)
                 pid = getpid()
                 socket_path = "/tmp/mcp_$(module_name)_$(timestamp)_$(pid).sock"
             end
-            
+
             println("Socket path: $socket_path")
-            
+
             # Run server with or without Revise
             try
-                # Always use our custom server to handle notifications properly
-                run_server_with_revise(server, socket_path, verbose=verbose, use_revise=use_revise)
+                if multi_mode
+                    # Multi-instance mode: each connection gets its own subdirectory
+                    run_server_multi_instance(setup_fn, grade_fn, socket_path, working_dir,
+                                            verbose=verbose, use_revise=use_revise,
+                                            include_basic_tools=include_basic_tools,
+                                            bash_uid=bash_uid, bash_env=bash_env)
+                else
+                    # Single instance mode: all connections share the same server
+                    run_server_with_revise(server, socket_path, verbose=verbose, use_revise=use_revise)
+                end
             finally
                 # Ensure socket is cleaned up even on error
                 if isfile(socket_path)
