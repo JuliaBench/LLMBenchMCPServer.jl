@@ -273,7 +273,7 @@ function launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::
     Sandbox = nothing
     try
         # Try to load Sandbox - it should be available if running within ClaudeBox
-        Sandbox = Base.require(Base.PkgId(Base.UUID("a4e034a1-bbed-5493-bc6f-f0a4e1c5e439"), "Sandbox"))
+        Sandbox = Base.require(Base.PkgId(Base.UUID("9307e30f-c43e-9ca7-d17c-c2dc59df670d"), "Sandbox"))
     catch e
         # Sandbox not available, provide helpful error message
         println(stderr, """
