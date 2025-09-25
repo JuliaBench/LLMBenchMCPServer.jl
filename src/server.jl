@@ -296,7 +296,7 @@ function launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::
     
     # Create minimal mounts for the sandbox
     # We'll use a minimal Debian rootfs and mount the Julia installation
-    mounts = Dict{String, Any}(
+    mounts = Dict{String, Sandbox.MountInfo}(
         "/" => Sandbox.MountInfo(Sandbox.debian_rootfs(; platform=host_platform), Sandbox.MountType.Overlayed),
         "/workspace" => Sandbox.MountInfo(pwd(), Sandbox.MountType.ReadWrite),
     )
@@ -311,6 +311,18 @@ function launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::
     # Mount the current project directory (where LLMBenchMCPServer is)
     project_dir = dirname(dirname(@__FILE__))
     mounts["/opt/llmbench"] = Sandbox.MountInfo(project_dir, Sandbox.MountType.ReadOnly)
+
+    # Mount Julia packages/artifacts/compiled directories
+    julia_depot = get(ENV, "JULIA_DEPOT_PATH", joinpath(homedir(), ".julia"))
+    if isdir(julia_depot)
+        mounts["/root/.julia"] = Sandbox.MountInfo(julia_depot, Sandbox.MountType.ReadOnly)
+    end
+
+    # Also mount the workspace root for ClaudeMCPTools and other local packages
+    workspace_root = dirname(project_dir)  # Get /workspace from /workspace/LLMBenchMCPServer
+    if isdir(workspace_root)
+        mounts["/opt/workspace"] = Sandbox.MountInfo(workspace_root, Sandbox.MountType.ReadOnly)
+    end
     
     # Set up environment variables
     env = Dict{String, String}(
@@ -325,35 +337,15 @@ function launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::
     new_args = copy(args)
     push!(new_args, "--direct")
 
-    # Handle socket mode differently
-    server_socket = nothing
+    # For socket mode in sandbox, we'll mount /tmp as writable
+    # so the sandboxed process can create its own socket
     if use_socket
-        # Create the socket in the parent process
-        if isempty(socket_path)
-            # Generate a unique socket path in /tmp
-            timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
-            pid = getpid()
-            socket_path = "/tmp/mcp_$(args[1])_$(timestamp)_$(pid).sock"
-        end
-
-        # Clean up existing socket if it exists
-        if isfile(socket_path)
-            rm(socket_path)
-        end
-
-        # Create the Unix socket server
-        server_socket = Sockets.listen(socket_path)
+        # Mount /tmp as read-write for socket creation
+        mounts["/tmp"] = Sandbox.MountInfo("/tmp", Sandbox.MountType.ReadWrite)
 
         if verbose
-            println("Created socket: $socket_path")
-            println("Socket will be passed to sandbox as fd 3")
+            println("Socket mode enabled - /tmp mounted for socket creation")
         end
-
-        # Add --fd3 flag to tell child to use fd 3
-        push!(new_args, "--fd3")
-
-        # Remove any --socket or --bind-socket flags as they're handled by parent
-        new_args = filter(arg -> !(arg in ["--socket", "--bind-socket"] || startswith(arg, "/tmp/mcp_")), new_args)
     end
 
     # Build the Julia command
@@ -361,57 +353,24 @@ function launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::
     cmd = `$cmd $new_args`
 
     # Create the sandbox configuration
-    if server_socket !== nothing
-        # Pass the socket as fd 3 (after stdin, stdout, stderr)
-        config = Sandbox.SandboxConfig(
-            mounts,
-            env;
-            stdin=Base.stdin,
-            stdout=Base.stdout,
-            stderr=Base.stderr,
-            pwd="/workspace"
-        )
+    config = Sandbox.SandboxConfig(
+        mounts,
+        env;
+        stdin=Base.stdin,
+        stdout=Base.stdout,
+        stderr=Base.stderr,
+        pwd="/workspace"
+    )
 
-        # Run in the sandbox with the socket passed as an extra fd
-        exit_code = Cint(0)
-        try
-            Sandbox.with_executor() do exe
-                # Pass server_socket as the 4th argument (fd 3)
-                run(exe, config, cmd, Base.stdin, Base.stdout, Base.stderr, server_socket)
-            end
-        catch e
-            println(stderr, "Error running in sandbox: $e")
-            exit_code = Cint(1)
-        finally
-            # Clean up socket
-            close(server_socket)
-            if isfile(socket_path)
-                rm(socket_path)
-                if verbose
-                    println("Cleaned up socket: $socket_path")
-                end
-            end
+    # Run in the sandbox
+    exit_code = Cint(0)
+    try
+        Sandbox.with_executor() do exe
+            run(exe, config, cmd)
         end
-    else
-        # No socket, run normally
-        config = Sandbox.SandboxConfig(
-            mounts,
-            env;
-            stdin=Base.stdin,
-            stdout=Base.stdout,
-            stderr=Base.stderr,
-            pwd="/workspace"
-        )
-
-        exit_code = Cint(0)
-        try
-            Sandbox.with_executor() do exe
-                run(exe, config, cmd)
-            end
-        catch e
-            println(stderr, "Error running in sandbox: $e")
-            exit_code = Cint(1)
-        end
+    catch e
+        println(stderr, "Error running in sandbox: $e")
+        exit_code = Cint(1)
     end
 
     return exit_code
