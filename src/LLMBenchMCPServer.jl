@@ -5,6 +5,7 @@ using JSON
 using Dates
 using Sockets
 using Test
+using Sandbox
 
 export LLMBenchServer, SetupProblemTool, GradeProblemTool, ListProblemsTool
 export main, run_socket_server

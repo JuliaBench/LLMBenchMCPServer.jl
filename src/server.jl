@@ -200,19 +200,19 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
     if isfile(socket_path)
         rm(socket_path)
     end
-    
+
     # Create the Unix socket
     socket = Sockets.listen(socket_path)
-    
+
     if verbose
         @info "MCP server listening on Unix socket: $socket_path"
     end
-    
+
     try
         while true
             # Accept connection
             client = Sockets.accept(socket)
-            
+
             # Handle client in async task using the common handler
             @async handle_client_connection(client, server;
                 verbose=verbose, use_revise=use_revise)
@@ -223,11 +223,52 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
 end
 
 """
-    launch_in_sandbox(args::Vector{String})
+    run_server_from_fd3(server::ClaudeMCPTools.MCPServer; verbose::Bool=false, use_revise::Bool=false)
+
+Run the MCP server using a server socket passed as file descriptor 3.
+This is used when running inside a sandbox where the parent process passes the server socket.
+"""
+function run_server_from_fd3(server::ClaudeMCPTools.MCPServer;
+                             verbose::Bool=false, use_revise::Bool=false)
+    # Create a PipeServer from file descriptor 3
+    # fd 3 because: 0=stdin, 1=stdout, 2=stderr, 3=our server socket
+    socket_server = Sockets.PipeServer(RawFD(3))
+
+    if verbose
+        @info "MCP server listening via file descriptor 3"
+    end
+
+    try
+        while true
+            # Accept connection from the socket
+            client = Sockets.accept(socket_server)
+
+            if verbose
+                @info "Accepted connection on fd3"
+            end
+
+            # Handle client in async task using the common handler
+            @async handle_client_connection(client, server;
+                verbose=verbose, use_revise=use_revise,
+                connection_info="fd3")
+        end
+    catch e
+        if !isa(e, InterruptException)
+            println(stderr, "Error in fd3 server: $e")
+            throw(e)
+        end
+    finally
+        close(socket_server)
+    end
+end
+
+"""
+    launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, verbose::Bool)
 
 Re-launch the LLMBenchMCPServer inside a Sandbox.jl sandbox.
+If use_socket is true, creates a socket and passes it as fd 4 to the child.
 """
-function launch_in_sandbox(args::Vector{String})::Cint
+function launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, verbose::Bool)::Cint
     # Check if Sandbox is available
     Sandbox = nothing
     try
@@ -283,33 +324,96 @@ function launch_in_sandbox(args::Vector{String})::Cint
     # Add --direct flag to prevent infinite recursion
     new_args = copy(args)
     push!(new_args, "--direct")
-    
+
+    # Handle socket mode differently
+    server_socket = nothing
+    if use_socket
+        # Create the socket in the parent process
+        if isempty(socket_path)
+            # Generate a unique socket path in /tmp
+            timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
+            pid = getpid()
+            socket_path = "/tmp/mcp_$(args[1])_$(timestamp)_$(pid).sock"
+        end
+
+        # Clean up existing socket if it exists
+        if isfile(socket_path)
+            rm(socket_path)
+        end
+
+        # Create the Unix socket server
+        server_socket = Sockets.listen(socket_path)
+
+        if verbose
+            println("Created socket: $socket_path")
+            println("Socket will be passed to sandbox as fd 3")
+        end
+
+        # Add --fd3 flag to tell child to use fd 3
+        push!(new_args, "--fd3")
+
+        # Remove any --socket or --bind-socket flags as they're handled by parent
+        new_args = filter(arg -> !(arg in ["--socket", "--bind-socket"] || startswith(arg, "/tmp/mcp_")), new_args)
+    end
+
     # Build the Julia command
     cmd = Cmd(["/opt/julia/bin/julia", "--project=/opt/llmbench", "-m", "LLMBenchMCPServer"])
     cmd = `$cmd $new_args`
-    
+
     # Create the sandbox configuration
-    config = Sandbox.SandboxConfig(
-        mounts,
-        env;
-        stdin=Base.stdin,
-        stdout=Base.stdout,
-        stderr=Base.stderr,
-        pwd="/workspace"
-    )
-    
-    # Run in the sandbox
-    exit_code = Cint(0)
-    try
-        Sandbox.with_executor() do exe
-            # Run the command in the sandbox
-            run(exe, config, cmd)
+    if server_socket !== nothing
+        # Pass the socket as fd 3 (after stdin, stdout, stderr)
+        config = Sandbox.SandboxConfig(
+            mounts,
+            env;
+            stdin=Base.stdin,
+            stdout=Base.stdout,
+            stderr=Base.stderr,
+            pwd="/workspace"
+        )
+
+        # Run in the sandbox with the socket passed as an extra fd
+        exit_code = Cint(0)
+        try
+            Sandbox.with_executor() do exe
+                # Pass server_socket as the 4th argument (fd 3)
+                run(exe, config, cmd, Base.stdin, Base.stdout, Base.stderr, server_socket)
+            end
+        catch e
+            println(stderr, "Error running in sandbox: $e")
+            exit_code = Cint(1)
+        finally
+            # Clean up socket
+            close(server_socket)
+            if isfile(socket_path)
+                rm(socket_path)
+                if verbose
+                    println("Cleaned up socket: $socket_path")
+                end
+            end
         end
-    catch e
-        println(stderr, "Error running in sandbox: $e")
-        exit_code = Cint(1)
+    else
+        # No socket, run normally
+        config = Sandbox.SandboxConfig(
+            mounts,
+            env;
+            stdin=Base.stdin,
+            stdout=Base.stdout,
+            stderr=Base.stderr,
+            pwd="/workspace"
+        )
+
+        exit_code = Cint(0)
+        try
+            Sandbox.with_executor() do exe
+                run(exe, config, cmd)
+            end
+        catch e
+            println(stderr, "Error running in sandbox: $e")
+            exit_code = Cint(1)
+        end
     end
-    
+
     return exit_code
 end
 
@@ -386,6 +490,7 @@ function (@main)(args)
             --workspace PATH      Working directory (default: current directory)
             --socket            Run server on Unix domain socket (creates socket in /tmp)
             --bind-socket PATH  Run server on Unix domain socket at specified path
+            --fd3                Use file descriptor 3 as the socket (for sandbox mode)
             --revise            Load Revise.jl and auto-reload code changes
             --no-basic-tools    Disable basic tools (bash, str_replace_editor)
             --verbose           Enable verbose output
@@ -418,6 +523,7 @@ function (@main)(args)
     working_dir = get(ENV, "LLMBENCH_WORKSPACE", pwd())
     use_socket = false
     socket_path = ""  # For --bind-socket
+    use_fd3 = false  # New flag for using fd 3 as socket
     use_revise = false
     include_basic_tools = true
     verbose = false
@@ -471,6 +577,10 @@ function (@main)(args)
         elseif args[i] == "--multi"
             multi_mode = true
             i += 1
+        elseif args[i] == "--fd3"
+            use_fd3 = true
+            use_socket = true  # fd3 implies socket mode
+            i += 1
         else
             println("Warning: Unknown option: $(args[i])")
             i += 1
@@ -483,7 +593,7 @@ function (@main)(args)
             println("Launching LLMBenchMCPServer in sandbox...")
             println("Note: Sandbox mode requires Sandbox.jl from BinaryBuilder2 ecosystem")
         end
-        return launch_in_sandbox(args)
+        return launch_in_sandbox(args, use_socket, socket_path, verbose)
     end
     
     # In direct mode, show a warning if verbose
@@ -774,35 +884,50 @@ function (@main)(args)
 
         # Run the server in appropriate mode
         if use_socket
-            # Use provided socket path or generate a unique one
-            if isempty(socket_path)
-                # Generate a unique socket path in /tmp
-                timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
-                pid = getpid()
-                socket_path = "/tmp/mcp_$(module_name)_$(timestamp)_$(pid).sock"
+            # Handle fd3 mode differently
+            if use_fd3
+                # In fd3 mode, we use the socket passed as file descriptor 3
+                if verbose
+                    println("Using socket from file descriptor 3")
+                end
+                # Don't print socket path in fd3 mode - it's handled by parent
+            else
+                # Use provided socket path or generate a unique one
+                if isempty(socket_path)
+                    # Generate a unique socket path in /tmp
+                    timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS")
+                    pid = getpid()
+                    socket_path = "/tmp/mcp_$(module_name)_$(timestamp)_$(pid).sock"
+                end
+
+                println("Socket path: $socket_path")
             end
 
-            println("Socket path: $socket_path")
-
-            # Run server with or without Revise
-            try
-                if multi_mode
-                    # Multi-instance mode: each connection gets its own subdirectory
-                    # Note: setup_fn and grade_fn can be nothing if not found in module
-                    run_server_multi_instance(setup_fn, grade_fn, list_fn, socket_path, working_dir;
-                                            verbose=verbose, use_revise=use_revise,
-                                            include_basic_tools=include_basic_tools,
-                                            bash_uid=bash_uid, bash_env=bash_env)
-                else
-                    # Single instance mode: all connections share the same server
-                    run_server_with_revise(server, socket_path, verbose=verbose, use_revise=use_revise)
-                end
-            finally
-                # Ensure socket is cleaned up even on error
-                if isfile(socket_path)
-                    rm(socket_path)
-                    if verbose
-                        println("Cleaned up socket: $socket_path")
+            # Run server with appropriate method
+            if use_fd3
+                # Use file descriptor 3 for the server socket
+                run_server_from_fd3(server, verbose=verbose, use_revise=use_revise)
+            else
+                # Run with normal socket file
+                try
+                    if multi_mode
+                        # Multi-instance mode: each connection gets its own subdirectory
+                        # Note: setup_fn and grade_fn can be nothing if not found in module
+                        run_server_multi_instance(setup_fn, grade_fn, list_fn, socket_path, working_dir;
+                                                verbose=verbose, use_revise=use_revise,
+                                                include_basic_tools=include_basic_tools,
+                                                bash_uid=bash_uid, bash_env=bash_env)
+                    else
+                        # Single instance mode: all connections share the same server
+                        run_server_with_revise(server, socket_path, verbose=verbose, use_revise=use_revise)
+                    end
+                finally
+                    # Ensure socket is cleaned up even on error
+                    if isfile(socket_path)
+                        rm(socket_path)
+                        if verbose
+                            println("Cleaned up socket: $socket_path")
+                        end
                     end
                 end
             end
