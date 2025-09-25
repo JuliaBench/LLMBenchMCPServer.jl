@@ -6,12 +6,13 @@ using Dates
 using Sockets
 using Test
 
-export LLMBenchServer, SetupProblemTool, GradeProblemTool
+export LLMBenchServer, SetupProblemTool, GradeProblemTool, ListProblemsTool
 export main, run_socket_server
 
 # Include components
 include("tools/setup_problem.jl")
 include("tools/grade_problem.jl")
+include("tools/list_problems.jl")
 include("server.jl")
 
 """
@@ -29,10 +30,11 @@ Run the LLMBenchMCPServer on a Unix domain socket.
 function run_socket_server(socket_path::String;
                           setup_fn::Union{Nothing,Function}=nothing,
                           grade_fn::Union{Nothing,Function}=nothing,
+                          list_fn::Union{Nothing,Function}=nothing,
                           verbose::Bool=false,
                           use_revise::Bool=false)
     # Create the server
-    server = LLMBenchServer(setup_fn=setup_fn, grade_fn=grade_fn)
+    server = LLMBenchServer(setup_fn=setup_fn, grade_fn=grade_fn, list_fn=list_fn)
 
     # Run on Unix socket
     run_server_with_revise(server, socket_path; verbose=verbose, use_revise=use_revise)

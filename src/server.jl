@@ -24,6 +24,10 @@ Handle a single client connection.
 function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
                                  verbose::Bool=false, use_revise::Bool=false,
                                  connection_info::String="")
+    if verbose && !isempty(connection_info)
+        @info "Connection established: $connection_info"
+    end
+
     try
         while isopen(client)
             # Read a line (JSON-RPC message)
@@ -54,11 +58,24 @@ function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
             try
                 request = JSON.parse(line)
 
+                # Log incoming request if verbose
+                if verbose
+                    println("\n=== Received request ===")
+                    println("Connection: $connection_info")
+                    println("Request:")
+                    println(JSON.json(request, 2))  # Pretty print with indent
+                    println("=======================\n")
+                    flush(stdout)
+                end
+
                 # Check if this is a notification (no id field means it's a notification)
                 is_notification = !haskey(request, "id")
 
                 # Handle notifications - they don't need responses
                 if is_notification
+                    if verbose
+                        @info "Received notification (no response needed)" connection=connection_info
+                    end
                     continue
                 end
 
@@ -69,8 +86,21 @@ function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
                     ClaudeMCPTools.handle_request(server, request)
                 end
 
+                # Convert response to JSON
+                json_response = JSON.json(response)
+
+                # Log outgoing response if verbose
+                if verbose
+                    println("\n=== Sending response ===")
+                    println("Connection: $connection_info")
+                    println("Response:")
+                    println(json_response)
+                    println("======================\n")
+                    flush(stdout)
+                end
+
                 # Send response
-                println(client, JSON.json(response))
+                println(client, json_response)
                 flush(client)
             catch e
                 # Only send error response if it's not a notification
@@ -103,7 +133,8 @@ end
 """
 Run the Unix socket server with optional Revise support.
 """
-function run_server_multi_instance(setup_fn::Function, grade_fn::Function,
+function run_server_multi_instance(setup_fn::Union{Function, Nothing}, grade_fn::Union{Function, Nothing},
+                                  list_fn::Union{Function, Nothing},
                                   socket_path::String, base_working_dir::String;
                                   verbose::Bool=false, use_revise::Bool=false,
                                   include_basic_tools::Bool=true, bash_uid::Union{Int, Nothing}=nothing,
@@ -143,6 +174,7 @@ function run_server_multi_instance(setup_fn::Function, grade_fn::Function,
                 name="LLMBenchServer_$(conn_id)",
                 setup_fn=setup_fn,
                 grade_fn=grade_fn,
+                list_fn=list_fn,
                 working_dir=instance_dir,
                 include_basic_tools=include_basic_tools,
                 bash_uid=bash_uid,
@@ -291,6 +323,7 @@ function LLMBenchServer(;
     version::String="0.1.0",
     setup_fn::Union{Function, Nothing}=nothing,
     grade_fn::Union{Function, Nothing}=nothing,
+    list_fn::Union{Function, Nothing}=nothing,
     working_dir::String=pwd(),
     include_basic_tools::Bool=true,
     bash_uid::Union{Int, Nothing}=nothing,
@@ -320,6 +353,12 @@ function LLMBenchServer(;
     if grade_fn !== nothing
         ClaudeMCPTools.register_tool!(server, "grade_problem",
             GradeProblemTool(grade_fn, working_dir=working_dir))
+    end
+
+    # Add list_problems tool if function provided
+    if list_fn !== nothing
+        ClaudeMCPTools.register_tool!(server, "list_problems",
+            ListProblemsTool(list_fn, working_dir=working_dir))
     end
 
     return server
@@ -477,6 +516,7 @@ function (@main)(args)
         mod = nothing
         setup_fn = nothing
         grade_fn = nothing
+        list_fn = nothing
         
         if auto_mode
             # In auto mode, create wrapper functions that dynamically load modules
@@ -487,88 +527,148 @@ function (@main)(args)
             # Create a wrapper function for setup_problem that auto-detects the module
             function auto_setup_problem(workdir::String, problem_id::String="")
                 if isempty(problem_id)
-                    return "Error: problem_id is required in auto mode. Format: ModuleName-problem_id"
+                    throw(ArgumentError("problem_id is required in auto mode. Format: ModuleName-problem_id"))
                 end
-                
+
                 # Extract module name from problem_id
                 parts = split(problem_id, "-", limit=2)
                 if length(parts) < 2
-                    return "Error: Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id"
+                    throw(ArgumentError("Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id"))
                 end
-                
+
                 mod_name = String(parts[1])
                 clean_problem_id = String(parts[2])
-                
-                # Try to load the module
-                try
-                    mod_symbol = Symbol(mod_name)
-                    target_mod = Base.require(Main, mod_symbol)
-                    
-                    # Check if the module has setup_problem
-                    if !isdefined(target_mod, :setup_problem)
-                        return "Error: Module $mod_name does not export setup_problem function"
-                    end
-                    
-                    # Call the module's setup_problem with the clean problem_id
-                    setup_fn = getfield(target_mod, :setup_problem)
-                    return Base.invokelatest(setup_fn, workdir, clean_problem_id)
-                catch e
-                    io = IOBuffer()
-                    showerror(io, e, catch_backtrace())
-                    return "Error loading module $mod_name: " * String(take!(io))
+
+                # Load the module (let errors propagate naturally)
+                mod_symbol = Symbol(mod_name)
+                target_mod = Base.require(Main, mod_symbol)
+
+                # Check if the module has setup_problem
+                if !isdefined(target_mod, :setup_problem)
+                    throw(ErrorException("Module $mod_name does not export setup_problem function"))
                 end
+
+                # Call the module's setup_problem with the clean problem_id
+                setup_fn = getfield(target_mod, :setup_problem)
+                return Base.invokelatest(setup_fn, workdir, clean_problem_id)
             end
             
             # Create a wrapper function for grade that auto-detects the module
             function auto_grade(workdir::String, transcript::String, problem_id::String="")
                 if isempty(problem_id)
-                    return Dict(
-                        "score" => 0.0,
-                        "metadata" => Dict("error" => "Error: problem_id is required in auto mode. Format: ModuleName-problem_id")
-                    )
+                    throw(ArgumentError("problem_id is required in auto mode. Format: ModuleName-problem_id"))
                 end
-                
+
                 # Extract module name from problem_id
                 parts = split(problem_id, "-", limit=2)
                 if length(parts) < 2
-                    return Dict(
-                        "score" => 0.0,
-                        "metadata" => Dict("error" => "Error: Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id")
-                    )
+                    throw(ArgumentError("Invalid problem_id format. Expected: ModuleName-problem_id, got: $problem_id"))
                 end
-                
+
                 mod_name = String(parts[1])
                 clean_problem_id = String(parts[2])
-                
-                # Try to load the module
-                try
-                    mod_symbol = Symbol(mod_name)
-                    target_mod = Base.require(Main, mod_symbol)
-                    
-                    # Check if the module has grade
-                    if !isdefined(target_mod, :grade)
-                        return Dict(
-                            "score" => 0.0,
-                            "metadata" => Dict("error" => "Error: Module $mod_name does not export grade function")
-                        )
-                    end
-                    
-                    # Call the module's grade with the clean problem_id
-                    grade_fn = getfield(target_mod, :grade)
-                    return Base.invokelatest(grade_fn, workdir, transcript, clean_problem_id)
-                catch e
-                    io = IOBuffer()
-                    showerror(io, e, catch_backtrace())
-                    return Dict(
-                        "score" => 0.0,
-                        "metadata" => Dict("error" => "Error loading module $mod_name: " * String(take!(io)))
-                    )
+
+                # Load the module (let errors propagate naturally)
+                mod_symbol = Symbol(mod_name)
+                target_mod = Base.require(Main, mod_symbol)
+
+                # Check if the module has grade
+                if !isdefined(target_mod, :grade)
+                    throw(ErrorException("Module $mod_name does not export grade function"))
                 end
+
+                # Call the module's grade with the clean problem_id
+                grade_fn = getfield(target_mod, :grade)
+                return Base.invokelatest(grade_fn, workdir, transcript, clean_problem_id)
             end
             
+            # Create a wrapper function for list_problems that lists from all available modules
+            function auto_list_problems()
+                all_problems = String[]
+                checked_modules = Set{Symbol}()
+
+                # Get packages from the current environment
+                for env in Base.load_path()
+                    # Get project file if it exists
+                    project_file = Base.env_project_file(env)
+                    if project_file isa String && isfile(project_file)
+                        # Parse the project file to get dependencies
+                        d = Base.parsed_toml(project_file)
+                        deps = get(d, "deps", Dict{String,Any}())::Dict{String,Any}
+
+                        # Try each dependency
+                        for (pkg_name, _) in deps
+                            pkg_symbol = Symbol(pkg_name)
+
+                            # Skip if already checked
+                            if pkg_symbol in checked_modules
+                                continue
+                            end
+                            push!(checked_modules, pkg_symbol)
+
+                            # Try to load the module and check for list_problems
+                            try
+                                # Use Base.require to properly load the module
+                                mod = Base.require(Main, pkg_symbol)
+
+                                # Check if the module has list_problems function
+                                if isdefined(mod, :list_problems)
+                                    list_fn = getfield(mod, :list_problems)
+                                    problems = Base.invokelatest(list_fn)
+                                    # Add module prefix to each problem
+                                    for problem in problems
+                                        push!(all_problems, "$pkg_name-$problem")
+                                    end
+                                    if verbose
+                                        println("Found $(length(problems)) problems in module $pkg_name")
+                                    end
+                                end
+                            catch e
+                                # Skip modules that can't be loaded or don't have benchmarks
+                                if verbose && !occursin("not found", string(e))
+                                    println(stderr, "Note: Module $pkg_name doesn't provide benchmarks or failed to load")
+                                end
+                            end
+                        end
+                    end
+                end
+
+                # Also check already loaded modules in Main
+                for name in names(Main; all=true, imported=true)
+                    if !(name in checked_modules) && isdefined(Main, name)
+                        obj = getfield(Main, name)
+                        if isa(obj, Module) && obj !== Main && obj !== Base && obj !== Core
+                            # Check if the module has list_problems function
+                            if isdefined(obj, :list_problems)
+                                try
+                                    list_fn = getfield(obj, :list_problems)
+                                    problems = Base.invokelatest(list_fn)
+                                    # Add module prefix to each problem
+                                    module_name = string(nameof(obj))
+                                    for problem in problems
+                                        push!(all_problems, "$module_name-$problem")
+                                    end
+                                    if verbose
+                                        println("Found $(length(problems)) problems in loaded module $module_name")
+                                    end
+                                catch e
+                                    # Skip modules that fail to list problems
+                                    if verbose
+                                        println(stderr, "Warning: Failed to list problems from module $(nameof(obj)): $e")
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                return all_problems
+            end
+
             # Set the wrapper functions
             setup_fn = auto_setup_problem
             grade_fn = auto_grade
+            list_fn = auto_list_problems
             
         else
             # Normal mode - load the specified module
@@ -620,6 +720,17 @@ function (@main)(args)
             else
                 println("Warning: No grade function found in $module_name")
             end
+
+            if isdefined(mod, :list_problems)
+                list_fn = getfield(mod, :list_problems)
+                if verbose
+                    println("Found list_problems function in $module_name")
+                end
+            else
+                if verbose
+                    println("Warning: No list_problems function found in $module_name")
+                end
+            end
         end
         
         # Set environment variables for benchmark access
@@ -642,6 +753,7 @@ function (@main)(args)
             version="1.0.0",
             setup_fn=setup_fn,
             grade_fn=grade_fn,
+            list_fn=list_fn,
             working_dir=working_dir,
             include_basic_tools=include_basic_tools,
             bash_uid=bash_uid,
@@ -676,7 +788,8 @@ function (@main)(args)
             try
                 if multi_mode
                     # Multi-instance mode: each connection gets its own subdirectory
-                    run_server_multi_instance(setup_fn, grade_fn, socket_path, working_dir,
+                    # Note: setup_fn and grade_fn can be nothing if not found in module
+                    run_server_multi_instance(setup_fn, grade_fn, list_fn, socket_path, working_dir;
                                             verbose=verbose, use_revise=use_revise,
                                             include_basic_tools=include_basic_tools,
                                             bash_uid=bash_uid, bash_env=bash_env)

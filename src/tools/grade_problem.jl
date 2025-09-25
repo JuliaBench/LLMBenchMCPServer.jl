@@ -35,15 +35,12 @@ end
 function ClaudeMCPTools.execute(tool::GradeProblemTool, params::Dict)
     problem_id = get(params, "problem_id", "")
     transcript = get(params, "transcript", "")
-    
+
     try
-        # Use LLMBENCH_WORKSPACE if set, otherwise use working_dir
-        workspace = get(ENV, "LLMBENCH_WORKSPACE", tool.working_dir)
-        
         # Call the grade function with all arguments
         # Use invokelatest to handle world age issues when loading modules dynamically
-        # Always pass all three parameters - the function has a default value for problem_id
-        result = Base.invokelatest(tool.grade_fn, workspace, transcript, problem_id)
+        # The function has a default value for problem_id
+        result = Base.invokelatest(tool.grade_fn, tool.working_dir, transcript, problem_id)
         
         # Debug: Print the result type
         @debug "Grade function returned: $(typeof(result))"
