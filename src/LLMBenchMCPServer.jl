@@ -6,6 +6,8 @@ using Dates
 using Sockets
 using Test
 
+import ClaudeMCPTools: execute, tool_schema
+
 export LLMBenchServer, SetupProblemTool, GradeProblemTool, ListProblemsTool
 export main, run_socket_server
 export has_sandbox_support, create_sandbox_config, launch_in_sandbox, launch_sandbox_bash
@@ -30,11 +32,11 @@ Run the LLMBenchMCPServer on a Unix domain socket.
 - `use_revise`: Enable Revise.jl for hot-reloading (default: false)
 """
 function run_socket_server(socket_path::String;
-                          setup_fn::Union{Nothing,Function}=nothing,
-                          grade_fn::Union{Nothing,Function}=nothing,
-                          list_fn::Union{Nothing,Function}=nothing,
-                          verbose::Bool=false,
-                          use_revise::Bool=false)
+    setup_fn::Union{Nothing,Function}=nothing,
+    grade_fn::Union{Nothing,Function}=nothing,
+    list_fn::Union{Nothing,Function}=nothing,
+    verbose::Bool=false,
+    use_revise::Bool=false)
     # Create the server
     server = LLMBenchServer(setup_fn=setup_fn, grade_fn=grade_fn, list_fn=list_fn)
 
