@@ -186,6 +186,7 @@ function LLMBenchMCPServer.create_sandbox_config(workspace::String, verbose::Boo
     host_platform = Base.BinaryPlatforms.HostPlatform()
 
     # Create minimal mounts for the sandbox
+    mkpath(workspace)
     mounts = Dict{String, Sandbox.MountInfo}(
         "/" => Sandbox.MountInfo(Sandbox.debian_rootfs(; platform=host_platform), Sandbox.MountType.Overlayed),
         "/workspace" => Sandbox.MountInfo(workspace, Sandbox.MountType.ReadWrite),
