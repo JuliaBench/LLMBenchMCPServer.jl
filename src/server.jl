@@ -7,29 +7,80 @@ using Scratch
 using TOML
 using Pkg
 using UUIDs
+using Dates
 
 # Load Revise once per process using OncePerProcess
 if VERSION < v"1.12"
-const load_revise = (args...,)->error("Only supported on 1.12")
+    const load_revise = (args...,) -> error("Only supported on 1.12")
 else
-const load_revise = Base.OncePerProcess{Union{Module,Nothing}}() do
-    try
-        # Use PkgId to load Revise
-        revise_pkg = Base.PkgId(Base.UUID("295af30f-e4ad-537b-8983-00126c2a3abe"), "Revise")
-        return Base.require(revise_pkg)
-    catch e
-        @warn "Failed to load Revise package" exception=e
-        return nothing
+    const load_revise = Base.OncePerProcess{Union{Module,Nothing}}() do
+        try
+            # Use PkgId to load Revise
+            revise_pkg = Base.PkgId(Base.UUID("295af30f-e4ad-537b-8983-00126c2a3abe"), "Revise")
+            return Base.require(revise_pkg)
+        catch e
+            @warn "Failed to load Revise package" exception = e
+            return nothing
+        end
     end
 end
+
+"""
+Move output directories to /tmp/output_dirs.
+"""
+function move_output_directories(output_dirs::Vector{String}, working_dir::String; verbose::Bool=false)
+    if isempty(output_dirs)
+        return
+    end
+
+    output_base = "/tmp/output_dirs"
+
+    # Create the output base directory if it doesn't exist
+    if !isdir(output_base)
+        mkpath(output_base)
+        if verbose
+            println(stderr, "Created output directory: $output_base")
+        end
+    end
+
+    # Move each specified directory
+    for dir in output_dirs
+        # Resolve relative paths from working_dir
+        source_path = isabspath(dir) ? dir : joinpath(working_dir, dir)
+
+        if isdir(source_path)
+            # Get the basename for the destination
+            dir_name = basename(source_path)
+            dest_path = joinpath(output_base, dir_name)
+
+            # If destination exists, create a unique name
+            if ispath(dest_path)
+                timestamp = Dates.format(Dates.now(), "yyyymmdd_HHMMSS_sss")
+                dest_path = joinpath(output_base, "$(dir_name)_$(timestamp)")
+            end
+
+            try
+                mv(source_path, dest_path)
+                if verbose
+                    println(stderr, "Moved directory: $source_path -> $dest_path")
+                end
+            catch e
+                println(stderr, "Warning: Failed to move directory $source_path: $e")
+            end
+        else
+            if verbose
+                println(stderr, "Warning: Directory not found: $source_path")
+            end
+        end
+    end
 end
 
 """
 Handle a single client connection.
 """
 function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
-                                 verbose::Bool=false, use_revise::Bool=false,
-                                 connection_info::String="")
+    verbose::Bool=false, use_revise::Bool=false,
+    connection_info::String="")
     if verbose && !isempty(connection_info)
         @info "Connection established: $connection_info"
     end
@@ -60,7 +111,7 @@ function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
                         end
                     catch e
                         if verbose
-                            @warn "Revise.revise() failed" exception=e
+                            @warn "Revise.revise() failed" exception = e
                         end
                     end
                 end
@@ -87,7 +138,7 @@ function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
                 # Handle notifications - they don't need responses
                 if is_notification
                     if verbose
-                        @info "Received notification (no response needed)" connection=connection_info
+                        @info "Received notification (no response needed)" connection = connection_info
                     end
                     continue
                 end
@@ -137,7 +188,7 @@ function handle_client_connection(client::IO, server::ClaudeMCPTools.MCPServer;
         end
     catch e
         if !(e isa EOFError || e isa Base.IOError)
-            @error "Error handling client" exception=e
+            @error "Error handling client" exception = e
         end
     finally
         # Don't close stdin/stdout - only close actual client sockets
@@ -153,12 +204,12 @@ end
 """
 Run the Unix socket server with optional Revise support.
 """
-function run_server_multi_instance(setup_fn::Union{Function, Nothing}, grade_fn::Union{Function, Nothing},
-                                  list_fn::Union{Function, Nothing},
-                                  socket_path::String, base_working_dir::String;
-                                  verbose::Bool=false, use_revise::Bool=false,
-                                  include_basic_tools::Bool=true, bash_uid::Union{Int, Nothing}=nothing,
-                                  bash_env::Dict{String,String}=Dict{String,String}())
+function run_server_multi_instance(setup_fn::Union{Function,Nothing}, grade_fn::Union{Function,Nothing},
+    list_fn::Union{Function,Nothing},
+    socket_path::String, base_working_dir::String;
+    verbose::Bool=false, use_revise::Bool=false,
+    include_basic_tools::Bool=true, bash_uid::Union{Int,Nothing}=nothing,
+    bash_env::Dict{String,String}=Dict{String,String}())
     # Clean up existing socket if it exists
     # Use ispath() not isfile() for Unix domain sockets
     if ispath(socket_path)
@@ -174,16 +225,16 @@ function run_server_multi_instance(setup_fn::Union{Function, Nothing}, grade_fn:
 
     # Use common accept loop with multi-instance mode
     accept_connections(socket, "socket: $socket_path";
-                      multi_instance=true,
-                      base_working_dir=base_working_dir,
-                      setup_fn=setup_fn,
-                      grade_fn=grade_fn,
-                      list_fn=list_fn,
-                      include_basic_tools=include_basic_tools,
-                      bash_uid=bash_uid,
-                      bash_env=bash_env,
-                      verbose=verbose,
-                      use_revise=use_revise)
+        multi_instance=true,
+        base_working_dir=base_working_dir,
+        setup_fn=setup_fn,
+        grade_fn=grade_fn,
+        list_fn=list_fn,
+        include_basic_tools=include_basic_tools,
+        bash_uid=bash_uid,
+        bash_env=bash_env,
+        verbose=verbose,
+        use_revise=use_revise)
 end
 
 """
@@ -202,14 +253,14 @@ Common function to accept connections and handle them.
 If `multi_instance` is true, creates a new server instance for each connection.
 """
 function accept_connections(socket_server, connection_type::String;
-                           server::Union{ClaudeMCPTools.MCPServer, Nothing}=nothing,
-                           multi_instance::Bool=false,
-                           base_working_dir::String="",
-                           setup_fn=nothing, grade_fn=nothing, list_fn=nothing,
-                           include_basic_tools::Bool=true,
-                           bash_uid::Union{Int, Nothing}=nothing,
-                           bash_env::Dict{String,String}=Dict{String,String}(),
-                           verbose::Bool=false, use_revise::Bool=false)
+    server::Union{ClaudeMCPTools.MCPServer,Nothing}=nothing,
+    multi_instance::Bool=false,
+    base_working_dir::String="",
+    setup_fn=nothing, grade_fn=nothing, list_fn=nothing,
+    include_basic_tools::Bool=true,
+    bash_uid::Union{Int,Nothing}=nothing,
+    bash_env::Dict{String,String}=Dict{String,String}(),
+    verbose::Bool=false, use_revise::Bool=false)
 
     # Validate arguments
     if !multi_instance && server === nothing
@@ -276,7 +327,7 @@ function accept_connections(socket_server, connection_type::String;
 end
 
 function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::String;
-                                verbose::Bool=false, use_revise::Bool=false)
+    verbose::Bool=false, use_revise::Bool=false)
     # Clean up existing socket if it exists
     # Use ispath() not isfile() for Unix domain sockets
     if ispath(socket_path)
@@ -292,8 +343,8 @@ function run_server_with_revise(server::ClaudeMCPTools.MCPServer, socket_path::S
 
     # Use common accept loop
     accept_connections(socket, "socket: $socket_path";
-                      server=server,
-                      verbose=verbose, use_revise=use_revise)
+        server=server,
+        verbose=verbose, use_revise=use_revise)
 end
 
 """
@@ -310,14 +361,14 @@ Run the MCP server using a server socket passed as file descriptor 3.
 This is used when running inside a sandbox where the parent process passes the server socket.
 Supports both single-instance (with server) and multi-instance modes.
 """
-function run_server_from_fd3(; server::Union{ClaudeMCPTools.MCPServer, Nothing}=nothing,
-                             multi_instance::Bool=false,
-                             base_working_dir::String="",
-                             setup_fn=nothing, grade_fn=nothing, list_fn=nothing,
-                             include_basic_tools::Bool=true,
-                             bash_uid::Union{Int, Nothing}=nothing,
-                             bash_env::Dict{String,String}=Dict{String,String}(),
-                             verbose::Bool=false, use_revise::Bool=false)
+function run_server_from_fd3(; server::Union{ClaudeMCPTools.MCPServer,Nothing}=nothing,
+    multi_instance::Bool=false,
+    base_working_dir::String="",
+    setup_fn=nothing, grade_fn=nothing, list_fn=nothing,
+    include_basic_tools::Bool=true,
+    bash_uid::Union{Int,Nothing}=nothing,
+    bash_env::Dict{String,String}=Dict{String,String}(),
+    verbose::Bool=false, use_revise::Bool=false)
     # Create a PipeServer from file descriptor 3
     # fd 3 because: 0=stdin, 1=stdout, 2=stderr, 3=our server socket
     # The socket was bound in parent, now we listen
@@ -330,17 +381,17 @@ function run_server_from_fd3(; server::Union{ClaudeMCPTools.MCPServer, Nothing}=
 
     # Use common accept loop
     accept_connections(socket_server, "fd3 (sandbox mode)";
-                      server=server,
-                      multi_instance=multi_instance,
-                      base_working_dir=base_working_dir,
-                      setup_fn=setup_fn,
-                      grade_fn=grade_fn,
-                      list_fn=list_fn,
-                      include_basic_tools=include_basic_tools,
-                      bash_uid=bash_uid,
-                      bash_env=bash_env,
-                      verbose=verbose,
-                      use_revise=use_revise)
+        server=server,
+        multi_instance=multi_instance,
+        base_working_dir=base_working_dir,
+        setup_fn=setup_fn,
+        grade_fn=grade_fn,
+        list_fn=list_fn,
+        include_basic_tools=include_basic_tools,
+        bash_uid=bash_uid,
+        bash_env=bash_env,
+        verbose=verbose,
+        use_revise=use_revise)
 end
 
 """
@@ -351,12 +402,12 @@ An MCP server specifically for LLM benchmarking with setup and grade functions.
 function LLMBenchServer(;
     name::String="LLMBenchMCPServer",
     version::String="0.1.0",
-    setup_fn::Union{Function, Nothing}=nothing,
-    grade_fn::Union{Function, Nothing}=nothing,
-    list_fn::Union{Function, Nothing}=nothing,
+    setup_fn::Union{Function,Nothing}=nothing,
+    grade_fn::Union{Function,Nothing}=nothing,
+    list_fn::Union{Function,Nothing}=nothing,
     working_dir::String=pwd(),
     include_basic_tools::Bool=true,
-    bash_uid::Union{Int, Nothing}=nothing,
+    bash_uid::Union{Int,Nothing}=nothing,
     bash_env::Dict{String,String}=Dict{String,String}()
 )
     # Create base MCP server
@@ -426,6 +477,7 @@ function (@main)(args)
             --bash-env KEY=VAL  Set environment variables for bash (can be used multiple times)
             --forward-ssh       Forward SSH agent authentication to sandbox
             --sandbox-bash      Launch bash shell in sandbox environment (for debugging)
+            --output-dirs DIRS  Comma-separated list of directories to move to /tmp/output_dirs at end
             --help, -h          Show this help message
 
         The specified module should export:
@@ -461,18 +513,19 @@ function (@main)(args)
     auto_mode = (module_name == "auto")  # Check if we're in auto-detect mode
     multi_mode = false  # New flag for multi-instance mode
     forward_ssh = false  # Forward SSH agent to sandbox
+    output_dirs = String[]  # Directories to move to /tmp/output_dirs at end
 
     i = 2
     while i <= length(args)
         if args[i] == "--workspace" && i + 1 <= length(args)
-            working_dir = args[i + 1]
+            working_dir = args[i+1]
             i += 2
         elseif args[i] == "--socket"
             use_socket = true
             i += 1
         elseif args[i] == "--bind-socket" && i + 1 <= length(args)
             use_socket = true
-            socket_path = args[i + 1]
+            socket_path = args[i+1]
             i += 2
         elseif args[i] == "--revise"
             use_revise = true
@@ -488,14 +541,14 @@ function (@main)(args)
             i += 1
         elseif args[i] == "--bash-uid" && i + 1 <= length(args)
             try
-                bash_uid = parse(Int, args[i + 1])
+                bash_uid = parse(Int, args[i+1])
             catch
                 println(stderr, "Warning: Invalid UID value: $(args[i + 1])")
             end
             i += 2
         elseif args[i] == "--bash-env" && i + 1 <= length(args)
             # Parse KEY=VALUE format
-            env_arg = args[i + 1]
+            env_arg = args[i+1]
             if contains(env_arg, "=")
                 key, value = split(env_arg, "=", limit=2)
                 bash_env[String(key)] = String(value)
@@ -513,6 +566,11 @@ function (@main)(args)
             use_fd3 = true
             use_socket = true  # fd3 implies socket mode
             i += 1
+        elseif args[i] == "--output-dirs" && i + 1 <= length(args)
+            # Parse comma-separated list of directories
+            dirs_arg = args[i+1]
+            output_dirs = String[strip(d) for d in split(dirs_arg, ",") if !isempty(strip(d))]
+            i += 2
         elseif args[i] == "--sandbox-bash"
             # Launch bash shell in sandbox for debugging
             if !direct_mode
@@ -554,7 +612,7 @@ function (@main)(args)
             i += 1
         end
     end
-    
+
     # If not in direct mode, attempt to load Sandbox and re-launch in sandbox
     if !direct_mode
         # Try to load Sandbox automatically if not already loaded
@@ -572,15 +630,18 @@ function (@main)(args)
 
                 # Check if extension loaded successfully by calling has_sandbox_support
                 if !Base.invokelatest(has_sandbox_support)
-                    println(stderr, """
-                    Error: Failed to load Sandbox extension.
+                    println(
+                        stderr,
+                        """
+        Error: Failed to load Sandbox extension.
 
-                    Options:
-                    1. Run with --direct flag to execute without sandboxing:
-                       julia --project -m LLMBenchMCPServer <args> --direct
+        Options:
+        1. Run with --direct flag to execute without sandboxing:
+           julia --project -m LLMBenchMCPServer <args> --direct
 
-                    2. Run from within ClaudeBox environment where Sandbox.jl is available
-                    """)
+        2. Run from within ClaudeBox environment where Sandbox.jl is available
+        """
+                    )
                     return Cint(1)
                 end
 
@@ -590,17 +651,20 @@ function (@main)(args)
             catch e
                 # Check if this is a "package not installed" error
                 if e isa ArgumentError && occursin("is required but does not seem to be installed", string(e))
-                    println(stderr, """
-                    Error: Sandbox.jl is not installed: $e
+                    println(
+                        stderr,
+                        """
+        Error: Sandbox.jl is not installed: $e
 
-                    Options:
-                    1. Run with --direct flag to execute without sandboxing:
-                       julia --project -m LLMBenchMCPServer <args> --direct
+        Options:
+        1. Run with --direct flag to execute without sandboxing:
+           julia --project -m LLMBenchMCPServer <args> --direct
 
-                    2. Install Sandbox.jl (requires BinaryBuilder2 ecosystem)
+        2. Install Sandbox.jl (requires BinaryBuilder2 ecosystem)
 
-                    3. Run from within ClaudeBox environment where Sandbox.jl is available
-                    """)
+        3. Run from within ClaudeBox environment where Sandbox.jl is available
+        """
+                    )
                 else
                     # Some other error during loading
                     println(stderr, "Error: Could not load Sandbox.jl: $e")
@@ -619,7 +683,7 @@ function (@main)(args)
         end
         return Base.invokelatest(launch_in_sandbox, args, use_socket, socket_path, working_dir, verbose, forward_ssh)
     end
-    
+
     # In direct mode, show a warning if verbose
     if verbose && direct_mode
         println(stderr, "Running in DIRECT mode (no sandboxing)")
@@ -651,13 +715,13 @@ function (@main)(args)
         setup_fn = nothing
         grade_fn = nothing
         list_fn = nothing
-        
+
         if auto_mode
             # In auto mode, create wrapper functions that dynamically load modules
             if verbose
                 println(stderr, "Auto mode enabled - modules will be loaded based on problem_id prefix")
             end
-            
+
             # Create a wrapper function for setup_problem that auto-detects the module
             function auto_setup_problem(workdir::String, problem_id::String="")
                 if isempty(problem_id)
@@ -686,7 +750,7 @@ function (@main)(args)
                 setup_fn = getfield(target_mod, :setup_problem)
                 return Base.invokelatest(setup_fn, workdir, clean_problem_id)
             end
-            
+
             # Create a wrapper function for grade that auto-detects the module
             function auto_grade(workdir::String, transcript::String, problem_id::String="")
                 if isempty(problem_id)
@@ -715,7 +779,7 @@ function (@main)(args)
                 grade_fn = getfield(target_mod, :grade)
                 return Base.invokelatest(grade_fn, workdir, transcript, clean_problem_id)
             end
-            
+
             # Create a wrapper function for list_problems that lists from all available modules
             function auto_list_problems()
                 all_problems = Vector{Any}()  # Can contain Strings or Dicts
@@ -821,11 +885,11 @@ function (@main)(args)
             setup_fn = auto_setup_problem
             grade_fn = auto_grade
             list_fn = auto_list_problems
-            
+
         else
             # Normal mode - load the specified module
             mod_symbol = Symbol(module_name)
-            
+
             # First try to load as a registered package/module
             try
                 mod = Base.require(Main, mod_symbol)
@@ -849,11 +913,11 @@ function (@main)(args)
                     end
                 end
             end
-            
+
             if mod === nothing
                 throw(ArgumentError("Could not load module $module_name"))
             end
-            
+
             # Extract functions from the loaded module
             if isdefined(mod, :setup_problem)
                 setup_fn = getfield(mod, :setup_problem)
@@ -884,16 +948,16 @@ function (@main)(args)
                 end
             end
         end
-        
+
         # Set environment variables for benchmark access
         # Set workspace directory
         ENV["LLMBENCH_WORKSPACE"] = working_dir
-        
+
         # Set bash UID if specified
         if bash_uid !== nothing
             ENV["LLMBENCH_BASH_UID"] = string(bash_uid)
         end
-        
+
         # Set bash environment variables with a prefix
         for (key, value) in bash_env
             ENV["LLMBENCH_BASH_ENV_$key"] = value
@@ -968,9 +1032,9 @@ function (@main)(args)
                         # Multi-instance mode: each connection gets its own subdirectory
                         # Note: setup_fn and grade_fn can be nothing if not found in module
                         run_server_multi_instance(setup_fn, grade_fn, list_fn, socket_path, working_dir;
-                                                verbose=verbose, use_revise=use_revise,
-                                                include_basic_tools=include_basic_tools,
-                                                bash_uid=bash_uid, bash_env=bash_env)
+                            verbose=verbose, use_revise=use_revise,
+                            include_basic_tools=include_basic_tools,
+                            bash_uid=bash_uid, bash_env=bash_env)
                     else
                         # Single instance mode: all connections share the same server
                         run_server_with_revise(server, socket_path, verbose=verbose, use_revise=use_revise)
@@ -990,12 +1054,15 @@ function (@main)(args)
             # Stdio mode - use the same handler as socket mode for consistency
             # This ensures notifications are handled properly
             handle_client_connection(stdin, server, verbose=verbose, use_revise=use_revise,
-                                   connection_info="stdio")
+                connection_info="stdio")
         end
 
     catch e
         println(stderr, "Error: $e")
         return 1
+    finally
+        # Move output directories to /tmp/output_dirs if specified
+        move_output_directories(output_dirs, working_dir; verbose=verbose)
     end
 
     return 0
