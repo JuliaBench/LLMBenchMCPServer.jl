@@ -418,13 +418,14 @@ function LLMBenchMCPServer.launch_sandbox_bash(args::Vector{String}, workspace::
 end
 
 """
-    launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, workspace::String, verbose::Bool, forward_ssh::Bool=false)
+    launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, workspace::String, verbose::Bool, forward_ssh::Bool=false, output_dirs::Vector{String}=String[])
 
 Re-launch the LLMBenchMCPServer inside a Sandbox.jl sandbox.
 If use_socket is true, creates a socket and passes it as fd3 to the sandboxed process.
 If forward_ssh is true, forwards SSH agent authentication to the sandbox.
+If output_dirs is provided, moves those directories to /tmp/output_dirs after the sandbox exits.
 """
-function LLMBenchMCPServer.launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, workspace::String, verbose::Bool, forward_ssh::Bool=false)::Cint
+function LLMBenchMCPServer.launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, workspace::String, verbose::Bool, forward_ssh::Bool=false, output_dirs::Vector{String}=String[])::Cint
     # Use common sandbox setup
     mounts, env, sandbox_depot = LLMBenchMCPServer.create_sandbox_config(workspace, verbose, forward_ssh)
 
@@ -453,6 +454,17 @@ function LLMBenchMCPServer.launch_in_sandbox(args::Vector{String}, use_socket::B
     push!(new_args, "--direct")
     # Remove --forward-ssh since we've already handled it
     filter!(x -> x != "--forward-ssh", new_args)
+
+    # Remove --output-dirs from args passed to sandbox (we handle it in the parent after sandbox exits)
+    i = 1
+    while i <= length(new_args)
+        if new_args[i] == "--output-dirs" && i < length(new_args)
+            # Remove both the flag and its value
+            deleteat!(new_args, i:i+1)
+        else
+            i += 1
+        end
+    end
 
     # Update workspace path to /workspace in sandbox
     for i in 1:length(new_args)
@@ -559,6 +571,12 @@ function LLMBenchMCPServer.launch_in_sandbox(args::Vector{String}, use_socket::B
             end
         catch
             # Ignore cleanup errors
+        end
+
+        # Move output directories on the host filesystem after sandbox exits
+        # The workspace path here is the host path (not /workspace inside sandbox)
+        if !isempty(output_dirs)
+            LLMBenchMCPServer.move_output_directories(output_dirs, workspace; verbose=verbose)
         end
     end
 

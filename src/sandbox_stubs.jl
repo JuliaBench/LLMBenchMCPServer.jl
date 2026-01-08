@@ -17,9 +17,10 @@ Create sandbox configuration. Will be implemented by the SandboxExt extension.
 function create_sandbox_config end
 
 """
-    launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, workspace::String, verbose::Bool, forward_ssh::Bool=false)
+    launch_in_sandbox(args::Vector{String}, use_socket::Bool, socket_path::String, workspace::String, verbose::Bool, forward_ssh::Bool=false, output_dirs::Vector{String}=String[])
 
 Launch the server in a sandbox. Will be implemented by the SandboxExt extension.
+If output_dirs is provided, moves those directories to /tmp/output_dirs after the sandbox exits.
 """
 function launch_in_sandbox end
 

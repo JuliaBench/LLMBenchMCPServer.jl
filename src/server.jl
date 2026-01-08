@@ -681,7 +681,7 @@ function (@main)(args)
         if verbose
             println(stderr, "Launching LLMBenchMCPServer in sandbox...")
         end
-        return Base.invokelatest(launch_in_sandbox, args, use_socket, socket_path, working_dir, verbose, forward_ssh)
+        return Base.invokelatest(launch_in_sandbox, args, use_socket, socket_path, working_dir, verbose, forward_ssh, output_dirs)
     end
 
     # In direct mode, show a warning if verbose
