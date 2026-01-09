@@ -30,7 +30,15 @@ Move output directories to /tmp/output_dirs.
 """
 function move_output_directories(output_dirs::Vector{String}, working_dir::String; verbose::Bool=false)
     if isempty(output_dirs)
+        if verbose
+            println(stderr, "No output directories specified, skipping move")
+        end
         return
+    end
+
+    if verbose
+        println(stderr, "Moving output directories: $output_dirs")
+        println(stderr, "Working directory: $working_dir")
     end
 
     output_base = "/tmp/output_dirs"
@@ -48,6 +56,10 @@ function move_output_directories(output_dirs::Vector{String}, working_dir::Strin
         # Resolve relative paths from working_dir
         source_path = isabspath(dir) ? dir : joinpath(working_dir, dir)
 
+        if verbose
+            println(stderr, "Processing: $dir -> source_path: $source_path")
+        end
+
         if isdir(source_path)
             # Get the basename for the destination
             dir_name = basename(source_path)
@@ -60,16 +72,46 @@ function move_output_directories(output_dirs::Vector{String}, working_dir::Strin
             end
 
             try
-                mv(source_path, dest_path)
+                # Use cp instead of mv to handle cross-filesystem moves
+                cp(source_path, dest_path; force=true)
                 if verbose
-                    println(stderr, "Moved directory: $source_path -> $dest_path")
+                    println(stderr, "Copied directory: $source_path -> $dest_path")
+                end
+                # Remove the source after successful copy
+                try
+                    rm(source_path; recursive=true, force=true)
+                    if verbose
+                        println(stderr, "Removed source directory: $source_path")
+                    end
+                catch rm_err
+                    if verbose
+                        println(stderr, "Warning: Could not remove source directory $source_path: $rm_err")
+                    end
                 end
             catch e
-                println(stderr, "Warning: Failed to move directory $source_path: $e")
+                println(stderr, "Warning: Failed to copy directory $source_path to $dest_path: $e")
+                # Try to show more details
+                if verbose
+                    println(stderr, "  Source exists: $(ispath(source_path))")
+                    println(stderr, "  Source is dir: $(isdir(source_path))")
+                    println(stderr, "  Dest base exists: $(isdir(output_base))")
+                end
             end
         else
+            # Always print warning if directory not found (not just in verbose mode)
+            println(stderr, "Warning: Directory not found: $source_path (from output_dir: $dir)")
             if verbose
-                println(stderr, "Warning: Directory not found: $source_path")
+                # List what's in the working directory to help debug
+                println(stderr, "  Contents of $working_dir:")
+                try
+                    for item in readdir(working_dir)
+                        item_path = joinpath(working_dir, item)
+                        item_type = isdir(item_path) ? "dir" : "file"
+                        println(stderr, "    [$item_type] $item")
+                    end
+                catch e
+                    println(stderr, "    (could not list directory: $e)")
+                end
             end
         end
     end
