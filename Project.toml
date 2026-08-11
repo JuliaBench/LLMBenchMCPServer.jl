@@ -31,40 +31,97 @@ Sandbox = "9307e30f-c43e-9ca7-d17c-c2dc59df670d"
 ScratchSpaceGarbageCollector = "73336863-5434-7263-5370-556e61336c43"
 TreeArchival = "216c6a2e-6c61-7669-6863-726165657274"
 
+[sources.BinaryBuilder2]
+rev = "kf/consolidated"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.BinaryBuilderAuditor]
+rev = "kf/consolidated"
+subdir = "BinaryBuilderAuditor.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.BinaryBuilderGitUtils]
+rev = "kf/consolidated"
+subdir = "BinaryBuilderGitUtils.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.BinaryBuilderPlatformExtensions]
+rev = "kf/consolidated"
+subdir = "BinaryBuilderPlatformExtensions.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.BinaryBuilderProducts]
+rev = "kf/consolidated"
+subdir = "BinaryBuilderProducts.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.BinaryBuilderSources]
+rev = "kf/consolidated"
+subdir = "BinaryBuilderSources.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.BinaryBuilderToolchains]
+rev = "kf/consolidated"
+subdir = "BinaryBuilderToolchains.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.ClaudeMCPTools]
+rev = "master"
+url = "git@github.com:JuliaBench/ClaudeMCPTools.jl.git"
+
+[sources.JLLGenerator]
+rev = "kf/consolidated"
+subdir = "JLLGenerator.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.KeywordArgumentExtraction]
+rev = "kf/consolidated"
+subdir = "KeywordArgumentExtraction.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.LLMBenchSimple]
+rev = "master"
+url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"
+
+[sources.MultiHashParsing]
+rev = "kf/consolidated"
+subdir = "MultiHashParsing.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.OutputCollectors]
+rev = "master"
+url = "https://github.com/JuliaPackaging/OutputCollectors.jl"
+
+[sources.Sandbox]
+rev = "master"
+url = "https://github.com/JuliaPackaging/Sandbox.jl"
+
+[sources.Scratch]
+rev = "master"
+url = "https://github.com/JuliaPackaging/Scratch.jl"
+
+[sources.ScratchSpaceGarbageCollector]
+rev = "kf/consolidated"
+subdir = "ScratchSpaceGarbageCollector.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
+[sources.TreeArchival]
+rev = "kf/consolidated"
+subdir = "TreeArchival.jl"
+url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"
+
 [extensions]
 SandboxExt = ["Sandbox", "BinaryBuilder2"]
-
-[sources]
-# Direct dependencies
-ClaudeMCPTools = {rev = "master", url = "git@github.com:JuliaBench/ClaudeMCPTools.jl.git"}
-LLMBenchSimple = {rev = "master", url = "git@github.com:JuliaComputing/LLMBenchSimple.jl.git"}
-Scratch = {rev = "master", url = "https://github.com/JuliaPackaging/Scratch.jl"}
-
-# Weak dependencies for sandbox functionality (BB2 ecosystem)
-BinaryBuilder2 = {rev = "kf/consolidated", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-BinaryBuilderAuditor = {rev = "kf/consolidated", subdir = "BinaryBuilderAuditor.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-BinaryBuilderGitUtils = {rev = "kf/consolidated", subdir = "BinaryBuilderGitUtils.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-BinaryBuilderPlatformExtensions = {rev = "kf/consolidated", subdir = "BinaryBuilderPlatformExtensions.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-BinaryBuilderProducts = {rev = "kf/consolidated", subdir = "BinaryBuilderProducts.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-BinaryBuilderSources = {rev = "kf/consolidated", subdir = "BinaryBuilderSources.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-BinaryBuilderToolchains = {rev = "kf/consolidated", subdir = "BinaryBuilderToolchains.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-JLLGenerator = {rev = "kf/consolidated", subdir = "JLLGenerator.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-KeywordArgumentExtraction = {rev = "kf/consolidated", subdir = "KeywordArgumentExtraction.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-MultiHashParsing = {rev = "kf/consolidated", subdir = "MultiHashParsing.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-OutputCollectors = {rev = "master", url = "https://github.com/JuliaPackaging/OutputCollectors.jl"}
-Sandbox = {rev = "master", url = "https://github.com/JuliaPackaging/Sandbox.jl"}
-ScratchSpaceGarbageCollector = {rev = "kf/consolidated", subdir = "ScratchSpaceGarbageCollector.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
-TreeArchival = {rev = "kf/consolidated", subdir = "TreeArchival.jl", url = "https://github.com/JuliaPackaging/BinaryBuilder2.jl"}
 
 [compat]
 ClaudeMCPTools = "0.1.0"
 Pkg = "1.11.0"
+Sandbox = "2"
 Scratch = "1.3.0"
 TOML = "1.0.3"
 Test = "1.11.0"
 
 [extras]
-# These are for backwards compatibility with [sources] validation
 BinaryBuilder2 = "12aac903-9f7c-5d81-afc2-d9565ea332af"
 BinaryBuilderAuditor = "53524979-5234-6e31-4220-6120654b694c"
 BinaryBuilderGitUtils = "654d7472-7548-7361-4832-74694762694c"
